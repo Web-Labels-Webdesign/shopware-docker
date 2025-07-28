@@ -188,7 +188,12 @@ jobs:
           echo "🧪 Testing Shopware ${{ matrix.shopware_version }} (${{ matrix.variant }}) image..."
           
           CONTAINER_NAME="test-shopware-${{ matrix.shopware_version }}-${{ matrix.variant }}"
-          IMAGE_TAG="${{ steps.meta.outputs.tags | head -1 }}"
+          # Build image reference from registry and matrix data
+          VARIANT_SUFFIX=""
+          if [ "${{ matrix.variant }}" = "slim" ]; then
+            VARIANT_SUFFIX="-slim"
+          fi
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.shopware_version }}${VARIANT_SUFFIX}"
           
           if [ "${{ matrix.variant }}" = "slim" ]; then
             # Test slim variant (PHP-FPM only)
@@ -252,9 +257,12 @@ jobs:
       - name: Set image reference
         id: vars
         run: |
-          # Extract first tag from matrix tags
-          FIRST_TAG=$(echo "${{ matrix.tags }}" | head -1 | sed 's/type=raw,value=//')
-          IMAGE_REF="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/shopware-dev:${FIRST_TAG}"
+          # Build image reference from matrix data
+          VARIANT_SUFFIX=""
+          if [ "${{ matrix.variant }}" = "slim" ]; then
+            VARIANT_SUFFIX="-slim"
+          fi
+          IMAGE_REF="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/shopware-dev:${{ matrix.shopware_version }}${VARIANT_SUFFIX}"
           echo "image_ref=${IMAGE_REF}" >> $GITHUB_OUTPUT
           echo "Scanning image: ${IMAGE_REF}"
       

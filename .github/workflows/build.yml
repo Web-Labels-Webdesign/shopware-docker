@@ -37,7 +37,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/shopware-dev
+  IMAGE_NAME_RAW: ${{ github.repository }}/shopware-dev
 
 jobs:
   # Generate dynamic build matrix
@@ -136,6 +136,14 @@ jobs:
         if: steps.should-build.outputs.should-build == 'true'
         uses: actions/checkout@v4
 
+      - name: Set lowercase image name
+        if: steps.should-build.outputs.should-build == 'true'
+        id: image-name
+        run: |
+          IMAGE_NAME=$(echo "${{ env.IMAGE_NAME_RAW }}" | tr '[:upper:]' '[:lower:]')
+          echo "image_name=${IMAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "Using image name: ${IMAGE_NAME}"
+
       - name: Set up Docker Buildx
         if: steps.should-build.outputs.should-build == 'true'
         uses: docker/setup-buildx-action@v3
@@ -155,7 +163,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ steps.image-name.outputs.image_name }}
           tags: ${{ matrix.tags }}
           labels: |
             org.opencontainers.image.title=Shopware ${{ matrix.shopware_version }} Development
@@ -226,10 +234,10 @@ jobs:
             BUILDKIT_INLINE_CACHE=1
           cache-from: |
             type=gha,scope=${{ matrix.cache_key }}
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-${{ matrix.cache_key }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ steps.image-name.outputs.image_name }}:cache-${{ matrix.cache_key }}
           cache-to: |
             type=gha,mode=max,scope=${{ matrix.cache_key }}
-            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-${{ matrix.cache_key }},mode=max
+            type=registry,ref=${{ env.REGISTRY }}/${{ steps.image-name.outputs.image_name }}:cache-${{ matrix.cache_key }},mode=max
           provenance: false
           sbom: false
 
@@ -244,7 +252,7 @@ jobs:
           if [ "${{ matrix.variant }}" = "slim" ]; then
             VARIANT_SUFFIX="-slim"
           fi
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.shopware_version }}${VARIANT_SUFFIX}"
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ steps.image-name.outputs.image_name }}:${{ matrix.shopware_version }}${VARIANT_SUFFIX}"
           
           if [ "${{ matrix.variant }}" = "slim" ]; then
             # Test slim variant (PHP-FPM only)

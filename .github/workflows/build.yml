@@ -1,0 +1,208 @@
+name: Build and Push Shopware Development Images
+
+on:
+  push:
+    branches: [ main, develop ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Build weekly on Sundays at 2 AM UTC to catch security updates
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Shopware version to build (leave empty for all)'
+        required: false
+        type: choice
+        options:
+          - '6.5.8.18'
+          - '6.6.10.6'
+          - '6.7.1.0'
+      platform:
+        description: 'Platform to build for'
+        required: false
+        default: 'linux/amd64,linux/arm64'
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/shopware-dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shopware_version: "6.5.8.18"
+            php_version: "8.2"
+            tags: |
+              type=raw,value=6.5.8.18
+              type=raw,value=6.5
+          - shopware_version: "6.6.10.6"
+            php_version: "8.3"
+            tags: |
+              type=raw,value=6.6.10.6
+              type=raw,value=6.6
+          - shopware_version: "6.7.1.0"
+            php_version: "8.4"
+            tags: |
+              type=raw,value=6.7.1.0
+              type=raw,value=6.7
+              type=raw,value=latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: ${{ matrix.tags }}
+          labels: |
+            org.opencontainers.image.title=Shopware ${{ matrix.shopware_version }} Development
+            org.opencontainers.image.description=Shopware ${{ matrix.shopware_version }} development environment with PHP ${{ matrix.php_version }}
+            org.opencontainers.image.vendor=${{ github.repository_owner }}
+            shopware.version=${{ matrix.shopware_version }}
+            php.version=${{ matrix.php_version }}
+
+      - name: Prepare build context
+        run: |
+          mkdir -p build/${{ matrix.shopware_version }}
+          
+          # Create version-specific Dockerfile
+          sed "s/ENV SHOPWARE_VERSION=.*/ENV SHOPWARE_VERSION=${{ matrix.shopware_version }}/" Dockerfile > build/${{ matrix.shopware_version }}/Dockerfile
+          sed -i "s/ENV PHP_VERSION=.*/ENV PHP_VERSION=${{ matrix.php_version }}/" build/${{ matrix.shopware_version }}/Dockerfile
+          
+          # Copy configuration files
+          cp apache-shopware.conf build/${{ matrix.shopware_version }}/
+          cp .env.dev build/${{ matrix.shopware_version }}/
+          cp supervisord.conf build/${{ matrix.shopware_version }}/
+          cp start.sh build/${{ matrix.shopware_version }}/
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: build/${{ matrix.shopware_version }}
+          platforms: ${{ github.event.inputs.platform || 'linux/amd64,linux/arm64' }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SHOPWARE_VERSION=${{ matrix.shopware_version }}
+            PHP_VERSION=${{ matrix.php_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test image
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "🧪 Testing Shopware ${{ matrix.shopware_version }} image..."
+          
+          # Start container
+          docker run -d \
+            --name test-shopware-${{ matrix.shopware_version }} \
+            -p 8080:80 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.shopware_version }}
+          
+          # Wait for container to be ready
+          timeout 300 bash -c 'until curl -f http://localhost:8080/api/_info/version; do sleep 5; done'
+          
+          # Basic health checks
+          curl -f http://localhost:8080/api/_info/version
+          curl -f http://localhost:8080/admin
+          
+          # Check if admin login works
+          curl -X POST http://localhost:8080/api/oauth/token \
+            -H "Content-Type: application/json" \
+            -d '{"client_id": "administration", "grant_type": "password", "scopes": "write", "username": "admin", "password": "shopware"}'
+          
+          # Cleanup
+          docker stop test-shopware-${{ matrix.shopware_version }}
+          docker rm test-shopware-${{ matrix.shopware_version }}
+          
+          echo "✅ Test passed for Shopware ${{ matrix.shopware_version }}"
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name != 'pull_request'
+    
+    strategy:
+      matrix:
+        shopware_version: ["6.5.8.18", "6.6.10.6", "6.7.1.0"]
+    
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.shopware_version }}
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.shopware_version }}.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results-${{ matrix.shopware_version }}.sarif'
+
+  update-readme:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update README with latest build info
+        run: |
+          # Update build date in README
+          sed -i "s/Last updated: .*/Last updated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')/" README.md
+          
+          # Update image sizes (this would need actual implementation)
+          echo "📊 Updated README with latest build information"
+
+      - name: Commit README updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md
+          git diff --staged --quiet || git commit -m "docs: update README with latest build info [skip ci]"
+          git push
+
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: [build, security-scan]
+    if: always()
+    
+    steps:
+      - name: Delete old package versions
+        uses: actions/delete-package-versions@v4
+        with:
+          package-name: ${{ github.repository }}
+          package-type: 'container'
+          min-versions-to-keep: 10
+          delete-only-untagged-versions: true

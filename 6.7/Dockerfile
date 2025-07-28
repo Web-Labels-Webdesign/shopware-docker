@@ -112,30 +112,15 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 # Set working directory
 WORKDIR /var/www/html
 
-# Clone Shopware development repository (shallow clone for faster builds)
+# Create Shopware project using official template (simplified approach)
 RUN echo "Cleaning working directory..." \
     && rm -rf ./* .[!.]* 2>/dev/null || true \
-    && echo "Cloning Shopware development repository..." \
-	&& git clone --depth 1 --single-branch --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git . 2>/dev/null || \
-	   git clone --depth 1 --single-branch --branch 6.7.1.0 https://github.com/shopware/shopware.git . 2>/dev/null || \
-	   git clone --depth 1 --single-branch https://github.com/shopware/shopware.git . \
-	&& echo "Shopware development repository cloned successfully" \
-	&& git config --global --add safe.directory /var/www/html \
-	&& rm -rf .git \
-	&& chown -R www-data:www-data .
-
-# Install PHP dependencies (production mode for faster builds)
-RUN echo "Installing PHP dependencies..." \
-	&& COMPOSER_MEMORY_LIMIT=-1 composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs \
-	&& echo "PHP dependencies installed"
-
-# Install Node.js dependencies (production only for faster builds)
-RUN echo "Installing Node.js dependencies..." \
-	&& npm ci --only=production \
-	&& echo "Node.js dependencies installed"
-
-# Skip asset building in Docker - will be done at runtime if needed
-# This saves significant build time
+    && echo "Creating Shopware project from official template..." \
+    && COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production:~6.7.0 . --no-interaction --prefer-dist --ignore-platform-reqs \
+    && echo "Setting up environment configuration..." \
+    && echo "APP_ENV=dev" > .env.local \
+    && echo "DATABASE_URL=mysql://shopware:shopware@localhost:3306/shopware" >> .env.local \
+    && echo "APP_URL=http://localhost" >> .env.local
 
 # Create required directories and set permissions
 RUN mkdir -p var/cache var/log var/sessions \

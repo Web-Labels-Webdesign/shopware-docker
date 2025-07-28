@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "WebFetch(domain:developer.shopware.com)"
     ],
     "deny": []
   }

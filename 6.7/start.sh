@@ -44,36 +44,14 @@ setup_shopware() {
     
     cd /var/www/html
     
-    # Generate JWT secret if not exists
-    if [ ! -f "config/jwt/private.pem" ]; then
-        echo "🔐 Generating JWT secret..."
-        bin/console system:generate-jwt-secret --force
-    fi
+    # Basic setup (JWT and app secret handled by system:install)
     
-    # Generate app secret if not set
-    if ! grep -q "APP_SECRET=" .env; then
-        echo "🔑 Generating app secret..."
-        APP_SECRET=$(bin/console system:generate-app-secret)
-        echo "APP_SECRET=${APP_SECRET}" >> .env
-    fi
-    
-    # Install Shopware if not already installed
+    # Install Shopware if not already installed (using official method)
     if ! bin/console system:is-installed 2>/dev/null; then
-        echo "📦 Installing Shopware with demo data..."
-        bin/console system:install --create-database --basic-setup --force
+        echo "📦 Installing Shopware using official method..."
+        bin/console system:install --basic-setup
         
-        # Install demo data for development
-        echo "🎭 Installing demo data..."
-        bin/console framework:demodata || echo "⚠️ Demo data installation failed, continuing..."
-        
-        # Create admin user
-        echo "👤 Creating admin user..."
-        bin/console user:create admin \
-        --admin \
-        --email="admin@example.com" \
-        --firstName="Admin" \
-        --lastName="User" \
-        --password="shopware" || echo "⚠️ Admin user might already exist"
+        echo "✅ Shopware installation complete!"
     else
         echo "✅ Shopware already installed!"
         
@@ -86,24 +64,8 @@ setup_shopware() {
     echo "🧹 Clearing cache..."
     bin/console cache:clear
     
-    # Setup Shopware CLI project
-    echo "🔧 Setting up Shopware CLI..."
-    if [ ! -f ".shopware-project.yml" ]; then
-        shopware-cli project config init --no-interaction || echo "⚠️ Shopware CLI config already exists"
-    fi
-    
-    # Build administration and storefront for development
-    echo "🏗️ Building Shopware assets..."
-    
-    # Install npm dependencies (already done in Dockerfile, but ensure they're up to date)
-    if [ -f "package.json" ]; then
-        npm install --include=dev
-    fi
-    
-    # Build administration in development mode
-    echo "🎨 Building admin interface..."
-    bin/console bundle:dump
-    npm run build:admin || echo "⚠️ Admin build failed, continuing..."
+    # Note: Assets will be built on-demand by Shopware
+    echo "ℹ️ Asset building will happen automatically when needed"
     
     # Set proper permissions
     chown -R www-data:www-data /var/www/html

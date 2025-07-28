@@ -116,51 +116,17 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 # Set working directory
 WORKDIR /var/www/html
 
-# Create composer.json for better caching
-COPY <<EOF composer.json
-{
-    "require": {
-        "shopware/core": "~6.6.0",
-        "shopware/administration": "~6.6.0",
-        "shopware/storefront": "~6.6.0"
-    },
-    "config": {
-        "allow-plugins": {
-            "symfony/flex": true,
-            "symfony/runtime": true
-        }
-    },
-    "extra": {
-        "symfony": {
-            "allow-contrib": true
-        }
-    }
-}
-EOF
-
-# Install dependencies (cached layer)
-RUN COMPOSER_MEMORY_LIMIT=-1 composer install --no-dev --optimize-autoloader --ignore-platform-reqs
-
-# Create Shopware project structure
+# Create Shopware project using official template (simplified approach)
 RUN echo "Cleaning working directory..." \
     && rm -rf ./* .[!.]* 2>/dev/null || true \
-    && echo "Creating Symfony Flex project..." \
-    && COMPOSER_MEMORY_LIMIT=-1 composer create-project symfony/skeleton . --no-interaction --prefer-dist --ignore-platform-reqs \
-    && echo "Configuring Symfony Flex for contrib recipes..." \
-    && composer config extra.symfony.allow-contrib true \
-    && echo "Installing Shopware via Symfony Flex..." \
-    && COMPOSER_MEMORY_LIMIT=-1 composer require shopware/core:~6.6.0 shopware/administration:~6.6.0 shopware/storefront:~6.6.0 --no-interaction --ignore-platform-reqs \
-    && echo "Setting up Shopware environment..." \
+    && echo "Creating Shopware project from official template..." \
+    && COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production:~6.6.0 . --no-interaction --prefer-dist --ignore-platform-reqs \
+    && echo "Setting up environment configuration..." \
     && echo "APP_ENV=dev" > .env.local \
     && echo "DATABASE_URL=mysql://shopware:shopware@localhost:3306/shopware" >> .env.local \
     && echo "APP_URL=http://localhost" >> .env.local
 
-# Skip dev dependencies in Docker build for faster builds
-# They can be installed at runtime if needed
-
-# Skip npm dependencies in Docker build for faster builds
-# Create minimal package.json for runtime
-RUN echo '{"scripts": {"build": "echo Build complete"}}' > package.json
+# Official template includes all necessary dependencies and scripts
 
 # Create required directories and set proper permissions
 RUN mkdir -p var/cache var/log var/sessions \

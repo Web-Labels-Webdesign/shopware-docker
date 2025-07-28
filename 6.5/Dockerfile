@@ -114,10 +114,13 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 # Set working directory
 WORKDIR /var/www/html
 
-# Create Shopware project using production template with dev setup
-RUN COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production:^6.5 . --no-interaction --prefer-dist --ignore-platform-reqs || \
-    COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production:${SHOPWARE_VERSION} . --no-interaction --prefer-dist --ignore-platform-reqs || \
-    COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production . --no-interaction --prefer-dist --ignore-platform-reqs
+# Create Shopware project using the correct template
+RUN echo "Creating Shopware project..." \
+    && COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production-template:^6.5 . --no-interaction --prefer-dist --ignore-platform-reqs 2>/dev/null || \
+    COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production-template . --no-interaction --prefer-dist --ignore-platform-reqs 2>/dev/null || \
+    (echo "Creating basic Symfony project and adding Shopware manually..." \
+    && COMPOSER_MEMORY_LIMIT=-1 composer create-project symfony/skeleton . --no-interaction --prefer-dist --ignore-platform-reqs \
+    && COMPOSER_MEMORY_LIMIT=-1 composer require shopware/core shopware/administration shopware/storefront --ignore-platform-reqs)
 
 # Install development dependencies
 RUN COMPOSER_MEMORY_LIMIT=-1 composer require --dev \

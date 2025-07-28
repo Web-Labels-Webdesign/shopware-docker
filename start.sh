@@ -4,18 +4,18 @@ set -e
 echo "🚀 Starting Shopware Development Environment..."
 
 # Create log directories with proper permissions
-sudo mkdir -p /var/log/supervisor
-sudo chown -R shopware:shopware /var/log/supervisor
+mkdir -p /var/log/supervisor
+chown -R shopware:shopware /var/log/supervisor
 
 # Initialize MySQL if needed
 if [ ! -d "/var/lib/mysql/mysql" ]; then
     echo "📦 Initializing MySQL database..."
-    sudo mysql_install_db --user=mysql --datadir=/var/lib/mysql
+    mysql_install_db --user=mysql --datadir=/var/lib/mysql
 fi
 
 # Start MySQL service
 echo "🗄️ Starting MySQL..."
-sudo service mysql start
+service mysql start
 
 # Wait for MySQL to be ready
 echo "⏳ Waiting for MySQL to be ready..."
@@ -56,22 +56,22 @@ if [ ! -f install.lock ]; then
     echo "🛠️ Installing Shopware..."
     
     # Clear cache first
-    sudo -u shopware php bin/console cache:clear --env=dev
+    su -c "php bin/console cache:clear --env=dev" shopware
     
     # Install Shopware
-    sudo -u shopware php bin/console system:install --create-database --basic-setup --force
+    su -c "php bin/console system:install --create-database --basic-setup --force" shopware
     
     # Create admin user
-    sudo -u shopware php bin/console user:create admin --admin --email="admin@example.com" --firstName="Shop" --lastName="Admin" --password="shopware"
+    su -c "php bin/console user:create admin --admin --email=\"admin@example.com\" --firstName=\"Shop\" --lastName=\"Admin\" --password=\"shopware\"" shopware
     
     # Generate JWT keypair
-    sudo -u shopware php bin/console system:generate-jwt-secret --force
+    su -c "php bin/console system:generate-jwt-secret --force" shopware
     
     # Install and build assets
     if [ -f package.json ]; then
         echo "📦 Installing and building assets..."
-        sudo -u shopware npm install --no-audit --no-fund
-        sudo -u shopware npm run build:all
+        su -c "npm install --no-audit --no-fund" shopware
+        su -c "npm run build:all" shopware
     fi
     
     # Create install lock
@@ -83,22 +83,22 @@ else
     echo "✅ Shopware already installed"
     
     # Update database schema if needed
-    sudo -u shopware php bin/console database:migrate --all --force
+    su -c "php bin/console database:migrate --all --force" shopware
     
     # Clear cache
-    sudo -u shopware php bin/console cache:clear --env=dev
+    su -c "php bin/console cache:clear --env=dev" shopware
 fi
 
 # Set proper permissions
 echo "🔐 Setting file permissions..."
-sudo chown -R shopware:shopware /var/www/html
-sudo chmod -R 755 /var/www/html
-sudo chmod -R 775 /var/www/html/var
-sudo chmod -R 775 /var/www/html/public/media
-sudo chmod -R 775 /var/www/html/public/thumbnail
-sudo chmod -R 775 /var/www/html/public/sitemap
-sudo chmod -R 775 /var/www/html/files
-sudo chmod -R 775 /var/www/html/custom
+chown -R shopware:shopware /var/www/html
+chmod -R 755 /var/www/html
+chmod -R 775 /var/www/html/var
+chmod -R 775 /var/www/html/public/media
+chmod -R 775 /var/www/html/public/thumbnail
+chmod -R 775 /var/www/html/public/sitemap
+chmod -R 775 /var/www/html/files
+chmod -R 775 /var/www/html/custom
 
 # Start services via supervisor
 echo "🎯 Starting all services..."

@@ -278,8 +278,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     curl -f http://localhost/health.php || \
     exit 1
 
-# Use non-root user for runtime
-USER shopware
+# Start services as root (needed for service management)
+USER root
 
 # Start services
 CMD ["/usr/local/bin/start.sh"]

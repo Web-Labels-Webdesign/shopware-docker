@@ -209,11 +209,22 @@ jobs:
           # Copy configuration files
           cp ${VERSION_DIR}/apache-shopware.conf build/${{ matrix.shopware_version }}/ || true
           cp ${VERSION_DIR}/.env.dev build/${{ matrix.shopware_version }}/ || true
-          cp ${SUPERVISORD_SOURCE} build/${{ matrix.shopware_version }}/supervisord.conf
-          cp ${START_SCRIPT_SOURCE} build/${{ matrix.shopware_version }}/start.sh
+          
+          # Copy supervisor config with variant-specific naming
+          if [ "${{ matrix.variant }}" = "slim" ]; then
+            cp ${SUPERVISORD_SOURCE} build/${{ matrix.shopware_version }}/supervisord-slim.conf
+            cp ${START_SCRIPT_SOURCE} build/${{ matrix.shopware_version }}/start-slim.sh
+          else
+            cp ${SUPERVISORD_SOURCE} build/${{ matrix.shopware_version }}/supervisord.conf
+            cp ${START_SCRIPT_SOURCE} build/${{ matrix.shopware_version }}/start.sh
+          fi
           
           # Make scripts executable
-          chmod +x build/${{ matrix.shopware_version }}/start.sh
+          if [ "${{ matrix.variant }}" = "slim" ]; then
+            chmod +x build/${{ matrix.shopware_version }}/start-slim.sh
+          else
+            chmod +x build/${{ matrix.shopware_version }}/start.sh
+          fi
           
           echo "✅ Build context prepared for ${{ matrix.variant }} variant"
 

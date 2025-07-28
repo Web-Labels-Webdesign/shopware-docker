@@ -119,8 +119,15 @@ jobs:
           build-args: |
             SHOPWARE_VERSION=${{ matrix.shopware_version }}
             PHP_VERSION=${{ matrix.php_version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            BUILDKIT_INLINE_CACHE=1
+          cache-from: |
+            type=gha
+            type=registry,ref=ghcr.io/${{ github.repository }}/cache:${{ matrix.shopware_version }}
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=ghcr.io/${{ github.repository }}/cache:${{ matrix.shopware_version }},mode=max
+          provenance: false
+          sbom: false
 
       - name: Test image
         if: github.event_name == 'pull_request'

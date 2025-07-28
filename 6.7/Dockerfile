@@ -101,7 +101,11 @@ RUN a2enmod rewrite \
 # Configure MySQL
 RUN echo "sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
 	&& echo "max_allowed_packet = 128M" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
-	&& echo "innodb_buffer_pool_size = 1G" >> /etc/mysql/mysql.conf.d/mysqld.cnf
+	&& echo "innodb_buffer_pool_size = 1G" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
+	&& mkdir -p /var/lib/mysql-home \
+	&& chown mysql:mysql /var/lib/mysql-home \
+	&& usermod -d /var/lib/mysql-home mysql \
+	&& mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql
 
 # Create web directory
 RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
@@ -109,29 +113,30 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 # Set working directory
 WORKDIR /var/www/html
 
-# Clone Shopware development repository
+# Clone Shopware development repository (shallow clone for faster builds)
 RUN echo "Cleaning working directory..." \
     && rm -rf ./* .[!.]* 2>/dev/null || true \
     && echo "Cloning Shopware development repository..." \
-	&& git clone --depth 1 --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git . 2>/dev/null || \
-	   git clone --depth 1 --branch 6.7.1.0 https://github.com/shopware/shopware.git . 2>/dev/null || \
-	   git clone --depth 1 https://github.com/shopware/shopware.git . \
-	&& echo "Shopware development repository cloned successfully"
+	&& git clone --depth 1 --single-branch --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git . 2>/dev/null || \
+	   git clone --depth 1 --single-branch --branch 6.7.1.0 https://github.com/shopware/shopware.git . 2>/dev/null || \
+	   git clone --depth 1 --single-branch https://github.com/shopware/shopware.git . \
+	&& echo "Shopware development repository cloned successfully" \
+	&& git config --global --add safe.directory /var/www/html \
+	&& rm -rf .git \
+	&& chown -R www-data:www-data .
 
-# Install PHP dependencies (development mode)
-RUN echo "Installing PHP dependencies for development..." \
-	&& COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction --ignore-platform-reqs \
+# Install PHP dependencies (production mode for faster builds)
+RUN echo "Installing PHP dependencies..." \
+	&& COMPOSER_MEMORY_LIMIT=-1 composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs \
 	&& echo "PHP dependencies installed"
 
-# Install Node.js dependencies for development
+# Install Node.js dependencies (production only for faster builds)
 RUN echo "Installing Node.js dependencies..." \
-	&& npm ci \
+	&& npm ci --only=production \
 	&& echo "Node.js dependencies installed"
 
-# Build development assets
-RUN echo "Building development assets..." \
-	&& npm run build-js \
-	&& echo "Development assets built"
+# Skip asset building in Docker - will be done at runtime if needed
+# This saves significant build time
 
 # Create required directories and set permissions
 RUN mkdir -p var/cache var/log var/sessions \

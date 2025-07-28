@@ -105,7 +105,11 @@ COPY apache-shopware.conf /etc/apache2/sites-available/000-default.conf
 # Configure MySQL
 RUN echo "sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
 	&& echo "max_allowed_packet = 128M" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
-	&& echo "innodb_buffer_pool_size = 1G" >> /etc/mysql/mysql.conf.d/mysqld.cnf
+	&& echo "innodb_buffer_pool_size = 1G" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
+	&& mkdir -p /var/lib/mysql-home \
+	&& chown mysql:mysql /var/lib/mysql-home \
+	&& usermod -d /var/lib/mysql-home mysql \
+	&& mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql
 
 # Create web directory
 RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
@@ -113,7 +117,32 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 # Set working directory
 WORKDIR /var/www/html
 
-# Create Shopware project using Symfony Flex (ddev approach)
+# Create composer.json for better caching
+COPY <<EOF composer.json
+{
+    "require": {
+        "shopware/core": "~6.6.0",
+        "shopware/administration": "~6.6.0",
+        "shopware/storefront": "~6.6.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "symfony/flex": true,
+            "symfony/runtime": true
+        }
+    },
+    "extra": {
+        "symfony": {
+            "allow-contrib": true
+        }
+    }
+}
+EOF
+
+# Install dependencies (cached layer)
+RUN COMPOSER_MEMORY_LIMIT=-1 composer install --no-dev --optimize-autoloader --ignore-platform-reqs
+
+# Create Shopware project structure
 RUN echo "Cleaning working directory..." \
     && rm -rf ./* .[!.]* 2>/dev/null || true \
     && echo "Creating Symfony Flex project..." \
@@ -121,31 +150,18 @@ RUN echo "Cleaning working directory..." \
     && echo "Configuring Symfony Flex for contrib recipes..." \
     && composer config extra.symfony.allow-contrib true \
     && echo "Installing Shopware via Symfony Flex..." \
-    && COMPOSER_MEMORY_LIMIT=-1 composer require shopware/core shopware/administration shopware/storefront --no-interaction --ignore-platform-reqs \
-    && echo "Installing additional Shopware components..." \
-    && COMPOSER_MEMORY_LIMIT=-1 composer require shopware/elasticsearch --no-interaction --ignore-platform-reqs || echo "Elasticsearch optional, continuing..." \
+    && COMPOSER_MEMORY_LIMIT=-1 composer require shopware/core:~6.6.0 shopware/administration:~6.6.0 shopware/storefront:~6.6.0 --no-interaction --ignore-platform-reqs \
     && echo "Setting up Shopware environment..." \
     && echo "APP_ENV=dev" > .env.local \
     && echo "DATABASE_URL=mysql://shopware:shopware@localhost:3306/shopware" >> .env.local \
     && echo "APP_URL=http://localhost" >> .env.local
 
-# Install development dependencies
-RUN COMPOSER_MEMORY_LIMIT=-1 composer require --dev \
-	shopware/dev-tools \
-	symfony/profiler-pack \
-	symfony/debug-bundle \
-	symfony/var-dumper \
-	--ignore-platform-reqs || echo "Dev dependencies installation failed, continuing..."
+# Skip dev dependencies in Docker build for faster builds
+# They can be installed at runtime if needed
 
-# Install npm dependencies (Symfony Flex should have created package.json)
-RUN if [ -f "package.json" ]; then \
-        echo "Installing npm dependencies..." && \
-        npm install --include=dev || echo "NPM install failed, continuing..."; \
-    else \
-        echo "Creating basic package.json..." && \
-        echo '{"scripts": {"build": "echo Build complete"}}' > package.json && \
-        npm install; \
-    fi
+# Skip npm dependencies in Docker build for faster builds
+# Create minimal package.json for runtime
+RUN echo '{"scripts": {"build": "echo Build complete"}}' > package.json
 
 # Create required directories and set proper permissions
 RUN mkdir -p var/cache var/log var/sessions \

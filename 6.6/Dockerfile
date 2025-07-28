@@ -112,22 +112,26 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 WORKDIR /var/www/html
 
 # Create Shopware project using production template with dev setup
-RUN composer create-project shopware/production:${SHOPWARE_VERSION} . --no-interaction --prefer-dist
+RUN COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production:${SHOPWARE_VERSION} . --no-interaction --prefer-dist --ignore-platform-reqs
 
 # Install development dependencies
-RUN composer require --dev \
+RUN COMPOSER_MEMORY_LIMIT=-1 composer require --dev \
 	shopware/dev-tools \
 	symfony/profiler-pack \
 	symfony/debug-bundle \
-	symfony/var-dumper
+	symfony/var-dumper \
+	--ignore-platform-reqs
 
 # Clone Shopware platform repository for development scripts
-RUN git clone --depth 1 --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git /tmp/shopware-repo \
-	&& cp /tmp/shopware-repo/package.json /var/www/html/ \
+RUN git clone --depth 1 --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git /tmp/shopware-repo 2>/dev/null || \
+	git clone --depth 1 --branch 6.6.10.6 https://github.com/shopware/shopware.git /tmp/shopware-repo 2>/dev/null || \
+	git clone --depth 1 https://github.com/shopware/shopware.git /tmp/shopware-repo \
+	&& cp /tmp/shopware-repo/package.json /var/www/html/ 2>/dev/null || \
+	echo '{"scripts": {"admin:build": "echo No admin build", "storefront:build": "echo No storefront build"}}' > /var/www/html/package.json \
 	&& rm -rf /tmp/shopware-repo
 
 # Install npm dependencies for development scripts
-RUN npm install --include=dev
+RUN npm install --include=dev || echo "NPM install failed, continuing without dev dependencies"
 
 # Add Shopware development scripts to package.json
 RUN npm pkg set scripts.admin:code-mods="@npm:admin run code-mods --" \

@@ -80,38 +80,39 @@ docker-compose exec shopware bin/console database:migrate --all
 - **Database**: MySQL 8 with Shopware-tuned settings
 - **PHP**: FPM with development extensions (Xdebug, etc.)
 - **Node.js**: Version 22 for asset building
-- **Additional Tools**: Shopware CLI, Composer 2, MailHog
+- **Additional Tools**: Shopware CLI, Composer 2, Mailpit
 
 ### Directory Structure
 ```
 shopware-docker/
-├── 6.5/, 6.6/, 6.7/     # Version-specific Dockerfiles
-│   ├── Dockerfile
-│   ├── apache-shopware.conf
-│   ├── start.sh
-│   └── supervisord.conf
+├── Dockerfile           # Single unified Dockerfile for all versions
+├── apache-shopware.conf # Apache virtual host configuration
+├── supervisord.conf     # Process management configuration
+├── start.sh             # Container initialization script
 ├── build.sh             # Multi-version build script
 ├── setup.sh             # Quick project setup script
 └── README.md            # Comprehensive documentation
 ```
 
 ### Key Configuration Files
-- **Dockerfile**: Multi-stage build with development dependencies
+- **Dockerfile**: Single unified multi-stage build with development dependencies
 - **apache-shopware.conf**: Apache virtual host with Shopware optimizations
 - **start.sh**: Container initialization script with MySQL and Shopware setup
-- **supervisord.conf**: Process management for MySQL, Apache, PHP-FPM, MailHog
+- **supervisord.conf**: Process management for MySQL, Apache, PHP-FPM, Mailpit
 
 ### Build Process
-1. **build.sh** script manages multi-version Docker builds
-2. Uses Docker Buildx for multi-platform support (amd64/arm64)
-3. Automatically tags versions and pushes to GitHub Container Registry
-4. Creates proper semantic version tags (e.g., 6.7.1.0, 6.7, latest)
+1. **build.sh** script manages multi-version Docker builds using a single Dockerfile
+2. Uses build arguments to specify Shopware version and PHP version
+3. Uses Docker Buildx for multi-platform support (amd64/arm64)
+4. **GitHub Actions** automatically builds and pushes images on code changes
+5. Creates proper semantic version tags (e.g., 6.7.1.0, 6.7, latest)
+6. Includes security scanning with Trivy and automated testing
 
 ### Development Features
 - **Xdebug 3**: Pre-configured for debugging on port 9003
 - **Hot Reload**: Automatic asset rebuilding during development
 - **Demo Data**: Pre-installed sample products and categories
-- **MailHog**: Email testing and debugging on port 8025
+- **Mailpit**: Email testing and debugging on port 8025
 - **Symfony Profiler**: Performance and debugging insights
 - **Development Mode**: APP_ENV=dev with optimized settings
 
@@ -124,6 +125,15 @@ shopware-docker/
 6. Permission setup for development
 7. Service management via Supervisor
 
+### GitHub Actions CI/CD
+- **Automated Builds**: Triggers on push to main/develop branches
+- **Multi-version Support**: Builds all supported Shopware versions simultaneously
+- **Security Scanning**: Trivy vulnerability scanning for each image
+- **Automated Testing**: Health checks for Shopware API, admin, and Mailpit
+- **Registry Push**: Automatic push to GitHub Container Registry
+- **Scheduled Builds**: Weekly builds on Sundays for security updates
+- **Manual Triggers**: Support for building specific versions via workflow dispatch
+
 ### Environment Variables
 - `XDEBUG_ENABLED=1`: Enable/disable Xdebug
 - `APP_URL`: Base URL for Shopware
@@ -134,7 +144,7 @@ shopware-docker/
 ### Access Points
 - **Frontend**: http://localhost
 - **Admin**: http://localhost/admin (admin/shopware)
-- **MailHog**: http://localhost:8025
+- **Mailpit**: http://localhost:8025
 - **Database**: localhost:3306 (shopware/shopware)
 - **Xdebug**: Port 9003
 

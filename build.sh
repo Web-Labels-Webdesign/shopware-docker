@@ -53,21 +53,7 @@ build_image() {
     echo "Platform: $platform"
     echo ""
     
-    # Create build context directory
-    local build_dir="build/$version"
-    mkdir -p "$build_dir"
-    
-    # Copy Dockerfile and modify for specific version
-    sed "s/ENV SHOPWARE_VERSION=.*/ENV SHOPWARE_VERSION=$version/" Dockerfile > "$build_dir/Dockerfile"
-    sed -i "s/ENV PHP_VERSION=.*/ENV PHP_VERSION=$php_version/" "$build_dir/Dockerfile"
-    
-    # Copy configuration files
-    cp apache-shopware.conf "$build_dir/"
-    cp .env.dev "$build_dir/"
-    cp supervisord.conf "$build_dir/"
-    cp start.sh "$build_dir/"
-    
-    # Build and push image
+    # Build and push image directly from current directory
     local tag="$REGISTRY/$IMAGE_NAME:$version"
     local latest_tag="$REGISTRY/$IMAGE_NAME:latest"
     
@@ -80,7 +66,7 @@ build_image() {
     --tag "$tag" \
     --tag "$REGISTRY/$IMAGE_NAME:${version%.*.*}" \
     --push \
-    "$build_dir"; then
+    .; then
         
         echo -e "${GREEN}✅ Successfully built: $tag${NC}"
         
@@ -152,14 +138,7 @@ main() {
     echo ""
 }
 
-# Cleanup function
-cleanup() {
-    echo -e "${YELLOW}🧹 Cleaning up build directories...${NC}"
-    rm -rf build/
-}
-
-# Set trap for cleanup
-trap cleanup EXIT
+# No cleanup needed for simplified build process
 
 # Run main function
 main "$@"

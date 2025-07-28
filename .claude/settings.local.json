@@ -3,7 +3,10 @@
     "allow": [
       "Bash(cp:*)",
       "WebFetch(domain:developer.shopware.com)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(rm:*)",
+      "Bash(find:*)",
+      "Bash(chmod:*)"
     ],
     "deny": []
   }

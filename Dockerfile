@@ -1,10 +1,9 @@
-# Multi-stage Shopware Development Environment
-# Inspired by shopwareLabs/devcontainer best practices
+# Shopware Development Environment
+# Complete development setup with Apache, MySQL, Xdebug, and all tools
 
 # Build arguments
 ARG SHOPWARE_VERSION
 ARG PHP_VERSION
-ARG VARIANT=full
 
 #
 # Base stage - Common dependencies
@@ -14,7 +13,6 @@ FROM ubuntu:22.04 AS base
 # Build arguments in stage
 ARG SHOPWARE_VERSION
 ARG PHP_VERSION
-ARG VARIANT
 
 # Metadata
 LABEL org.opencontainers.image.title="Shopware ${SHOPWARE_VERSION} Development"
@@ -24,20 +22,18 @@ LABEL org.opencontainers.image.source="https://github.com/weblabels/shopware-doc
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL shopware.version="${SHOPWARE_VERSION}"
 LABEL php.version="${PHP_VERSION}"
-LABEL variant="${VARIANT}"
 
 # Environment setup
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Berlin
 ENV SHOPWARE_VERSION=${SHOPWARE_VERSION}
 ENV PHP_VERSION=${PHP_VERSION}
-ENV VARIANT=${VARIANT}
 
 # Create non-root user early
 RUN groupadd --gid 1000 shopware \
     && useradd --uid 1000 --gid shopware --shell /bin/bash --create-home shopware
 
-# Install system dependencies with minimal packages
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Essential system tools
     ca-certificates \
@@ -84,11 +80,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     php${PHP_VERSION}-readline \
     # Security and performance
     php${PHP_VERSION}-apcu \
+    # Development extensions
+    php${PHP_VERSION}-dev \
+    php${PHP_VERSION}-xdebug \
     # Clean up
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Configure PHP for production with development overrides
+# Configure PHP for development
 RUN { \
     echo 'memory_limit = 512M'; \
     echo 'max_execution_time = 300'; \
@@ -108,6 +107,16 @@ RUN { \
     # CLI specific settings
     && echo 'memory_limit = 1G' >> /etc/php/${PHP_VERSION}/cli/conf.d/99-shopware.ini \
     && echo 'max_execution_time = 0' >> /etc/php/${PHP_VERSION}/cli/conf.d/99-shopware.ini
+
+# Configure Xdebug for development
+RUN { \
+    echo "xdebug.mode = debug,coverage,develop"; \
+    echo "xdebug.start_with_request = trigger"; \
+    echo "xdebug.client_host = host.docker.internal"; \
+    echo "xdebug.client_port = 9003"; \
+    echo "xdebug.log = /tmp/xdebug.log"; \
+    echo "xdebug.log_level = 0"; \
+    } >> /etc/php/${PHP_VERSION}/mods-available/xdebug.ini
 
 #
 # Node.js stage
@@ -149,13 +158,12 @@ RUN curl -1sLf 'https://dl.cloudsmith.io/public/friendsofshopware/stable/setup.d
     && shopware-cli --version
 
 #
-# Web server stage (full variant only)
+# Web server stage
 #
 FROM dev-tools AS web-server
 
-# Install web server and database for full variant
-RUN if [ "$VARIANT" = "full" ]; then \
-    apt-get update && apt-get install -y --no-install-recommends \
+# Install web server and database
+RUN apt-get update && apt-get install -y --no-install-recommends \
     # Web server
     apache2 \
     # Database
@@ -167,41 +175,21 @@ RUN if [ "$VARIANT" = "full" ]; then \
     vim \
     nano \
     htop \
-    # Development PHP extensions
-    php${PHP_VERSION}-dev \
-    php${PHP_VERSION}-xdebug \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean; \
-    fi
+    && apt-get clean
 
-# Configure Apache (full variant only)
-RUN if [ "$VARIANT" = "full" ]; then \
-    a2enmod rewrite headers ssl; \
-    fi
+# Configure Apache
+RUN a2enmod rewrite headers ssl
 
-# Configure MySQL (full variant only) 
-RUN if [ "$VARIANT" = "full" ]; then \
-    { \
+# Configure MySQL
+RUN { \
     echo "sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'"; \
     echo "max_allowed_packet = 128M"; \
     echo "innodb_buffer_pool_size = 512M"; \
     echo "innodb_log_file_size = 256M"; \
     echo "innodb_flush_log_at_trx_commit = 2"; \
     echo "innodb_flush_method = O_DIRECT"; \
-    } >> /etc/mysql/mysql.conf.d/shopware.cnf; \
-    fi
-
-# Configure Xdebug for development (full variant only)
-RUN if [ "$VARIANT" = "full" ] && [ -f "/etc/php/${PHP_VERSION}/mods-available/xdebug.ini" ]; then \
-    { \
-    echo "xdebug.mode = debug,coverage,develop"; \
-    echo "xdebug.start_with_request = trigger"; \
-    echo "xdebug.client_host = host.docker.internal"; \
-    echo "xdebug.client_port = 9003"; \
-    echo "xdebug.log = /tmp/xdebug.log"; \
-    echo "xdebug.log_level = 0"; \
-    } >> /etc/php/${PHP_VERSION}/mods-available/xdebug.ini; \
-    fi
+    } >> /etc/mysql/mysql.conf.d/shopware.cnf
 
 #
 # Application stage
@@ -222,18 +210,10 @@ USER shopware
 RUN MAJOR_MINOR=$(echo "$SHOPWARE_VERSION" | cut -d. -f1-2) \
     && echo "Creating Shopware project from official template..." \
     && cd /tmp \
-    && if [ "$VARIANT" = "slim" ]; then \
-    COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" shopware-project \
+    && COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" shopware-project \
     --no-interaction \
     --prefer-dist \
     --ignore-platform-reqs \
-    --no-dev; \
-    else \
-    COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" shopware-project \
-    --no-interaction \
-    --prefer-dist \
-    --ignore-platform-reqs; \
-    fi \
     && echo "Moving project files to application directory..." \
     && cd /var/www/html \
     && rm -rf ./* ./.* 2>/dev/null || true \
@@ -255,7 +235,6 @@ USER root
 
 # Copy configuration files
 COPY --chown=shopware:shopware apache-shopware.conf /etc/apache2/sites-available/000-default.conf
-COPY --chown=shopware:shopware .env.dev /var/www/html/.env
 COPY --chown=shopware:shopware supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY --chown=shopware:shopware start.sh /usr/local/bin/start.sh
 
@@ -275,9 +254,8 @@ RUN chmod +x /usr/local/bin/start.sh \
 #
 FROM application AS runtime
 
-# Install Mailpit for email testing (full variant only) - modern MailHog alternative with ARM64 support
-RUN if [ "$VARIANT" = "full" ]; then \
-    ARCH=$(dpkg --print-architecture) \
+# Install Mailpit for email testing
+RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in \
     amd64) MAILPIT_ARCH="amd64" ;; \
     arm64) MAILPIT_ARCH="arm64" ;; \
@@ -289,8 +267,7 @@ RUN if [ "$VARIANT" = "full" ]; then \
     && wget -O mailpit.tar.gz "https://github.com/axllent/mailpit/releases/download/${MAILPIT_VERSION}/mailpit-linux-${MAILPIT_ARCH}.tar.gz" \
     && tar -xzf mailpit.tar.gz -C /usr/local/bin/ \
     && rm mailpit.tar.gz \
-    && chmod +x /usr/local/bin/mailpit; \
-    fi
+    && chmod +x /usr/local/bin/mailpit
 
 # Expose ports
 EXPOSE 80 443 3306 8025 9003

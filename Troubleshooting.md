@@ -11,22 +11,16 @@
 # Check container logs
 docker logs <container-name>
 
-# For full variant - check if ports are already in use
+# Check if ports are already in use
 sudo netstat -tlnp | grep :80
 sudo netstat -tlnp | grep :3306
+sudo netstat -tlnp | grep :8025
 
-# For slim variant - check PHP-FPM port
-sudo netstat -tlnp | grep :9000
-
-# Try running with different ports
-# Full variant:
-docker run -p 8080:80 -p 3307:3306 ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-full
-
-# Slim variant:
-docker run -p 9001:9000 ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-slim
+# Try running with different ports if needed
+docker run -p 8080:80 -p 3307:3306 -p 8026:8025 ghcr.io/weblabels/shopware-docker/shopware-dev:6.7.1.0
 ```
 
-### Database Connection Issues (Full Variant)
+### Database Connection Issues
 
 **Problem:** "Connection refused" or "Access denied" errors
 
@@ -43,26 +37,7 @@ docker exec -it <container-name> mysql -e "DROP DATABASE IF EXISTS shopware; CRE
 docker exec -it <container-name> bin/console system:install --create-database --basic-setup --force
 ```
 
-### Slim Variant with External Database
-
-**Problem:** Database connection issues when using external database
-
-**Solutions:**
-```bash
-# Check database connectivity from slim container
-docker exec -it <container-name> php -r "
-$pdo = new PDO('mysql:host=your-db-host:3306;dbname=shopware', 'user', 'pass');
-echo 'Connection successful';
-"
-
-# Verify environment variables
-docker exec -it <container-name> env | grep DATABASE_URL
-
-# Check if database exists and is accessible
-docker exec -it <container-name> mysql -h your-db-host -u shopware -p shopware -e "SHOW TABLES;"
-```
-
-### Xdebug Not Working (Full Variant Only)
+### Xdebug Not Working
 
 **Problem:** IDE doesn't receive debug connections
 
@@ -107,24 +82,6 @@ docker exec -it <container-name> ./bin/build-administration.sh
 docker exec -it <container-name> npm run admin:dev
 ```
 
-### PHP-FPM Issues (Slim Variant)
-
-**Problem:** PHP-FPM not responding or 502 Gateway errors
-
-**Solutions:**
-```bash
-# Check PHP-FPM status
-docker exec -it <container-name> supervisorctl status
-
-# Test PHP-FPM ping endpoint
-docker exec -it <container-name> curl -f http://localhost:9000/ping
-
-# Check PHP-FPM logs
-docker exec -it <container-name> tail -f /var/log/php8.x-fpm.log
-
-# Restart PHP-FPM
-docker exec -it <container-name> supervisorctl restart php-fpm
-```
 
 ### Plugin Development Issues
 
@@ -180,12 +137,9 @@ docker exec -it <container-name> apache2ctl configtest
 docker exec -it <container-name> tail -f /var/log/apache2/error.log
 ```
 
-#### Slim Variant Troubleshooting
-
-**Missing Web Server:**
+**Proxy Configuration:**
 ```bash
-# Slim variant requires external web server
-# Example nginx configuration for Docker Compose:
+# If using external proxy, example nginx configuration:
 ```
 
 ```nginx
@@ -216,9 +170,8 @@ docker exec -it <container-name> ls -la vendor/composer/
 ```
 ```
 
-**For Slim Variant:**
+**Performance Optimization:**
 ```bash
-# Use slim variant with external services for better performance
 # Enable OPcache optimization
 docker exec -it <container-name> php -i | grep opcache
 
@@ -226,20 +179,20 @@ docker exec -it <container-name> php -i | grep opcache
 docker exec -it <container-name> php -r "echo ini_get('memory_limit');"
 ```
 
-## Docker Buildx Bake Issues
+## Docker Build Issues
 
-**Problem:** `docker buildx bake` command not found
+**Problem:** Build failures or Docker Buildx issues
 
 **Solution:**
 ```bash
-# Install Docker Buildx (if not already installed)
+# Check Docker Buildx availability
 docker buildx version
 
-# Enable experimental features in Docker config
-echo '{"experimental": true}' > ~/.docker/config.json
+# Use the build script
+./build.sh 6.7.1.0
 
-# Use legacy build script as fallback
-./build.sh
+# Check available builders
+docker buildx ls
 ```
 
 **Problem:** Multi-platform build fails

@@ -221,18 +221,24 @@ USER shopware
 # Create Shopware project using official template
 RUN MAJOR_MINOR=$(echo "$SHOPWARE_VERSION" | cut -d. -f1-2) \
     && echo "Creating Shopware project from official template..." \
+    && cd /tmp \
     && if [ "$VARIANT" = "slim" ]; then \
-        COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" . \
+        COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" shopware-project \
             --no-interaction \
             --prefer-dist \
             --ignore-platform-reqs \
             --no-dev; \
     else \
-        COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" . \
+        COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" shopware-project \
             --no-interaction \
             --prefer-dist \
             --ignore-platform-reqs; \
     fi \
+    && echo "Moving project files to application directory..." \
+    && cd /var/www/html \
+    && rm -rf ./* ./.* 2>/dev/null || true \
+    && mv /tmp/shopware-project/* /tmp/shopware-project/.* /var/www/html/ 2>/dev/null || true \
+    && rmdir /tmp/shopware-project \
     && echo "Setting up environment configuration..." \
     && echo "APP_ENV=dev" > .env.local \
     && echo "DATABASE_URL=mysql://shopware:shopware@localhost:3306/shopware" >> .env.local \

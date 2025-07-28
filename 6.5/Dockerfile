@@ -12,8 +12,13 @@ ENV TZ=Europe/Berlin
 ENV SHOPWARE_VERSION=6.5.8.18
 ENV PHP_VERSION=8.2
 
+# Add PHP repository for latest versions
+RUN apt-get update && apt-get install -y software-properties-common gnupg \
+	&& add-apt-repository ppa:ondrej/php -y \
+	&& apt-get update
+
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get install -y \
 	# Basic system tools
 	curl \
 	wget \
@@ -36,7 +41,6 @@ RUN apt-get update && apt-get install -y \
 	php${PHP_VERSION}-curl \
 	php${PHP_VERSION}-xml \
 	php${PHP_VERSION}-bcmath \
-	php${PHP_VERSION}-json \
 	php${PHP_VERSION}-intl \
 	php${PHP_VERSION}-xsl \
 	php${PHP_VERSION}-soap \

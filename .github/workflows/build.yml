@@ -122,10 +122,10 @@ jobs:
             BUILDKIT_INLINE_CACHE=1
           cache-from: |
             type=gha
-            type=registry,ref=ghcr.io/${{ github.repository }}/cache:${{ matrix.shopware_version }}
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/shopware-docker-cache:${{ matrix.shopware_version }}
           cache-to: |
             type=gha,mode=max
-            type=registry,ref=ghcr.io/${{ github.repository }}/cache:${{ matrix.shopware_version }},mode=max
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/shopware-docker-cache:${{ matrix.shopware_version }},mode=max
           provenance: false
           sbom: false
 

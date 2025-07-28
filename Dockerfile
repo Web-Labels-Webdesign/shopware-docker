@@ -183,13 +183,14 @@ RUN a2enmod rewrite headers ssl
 
 # Configure MySQL
 RUN { \
+    echo "[mysqld]"; \
     echo "sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'"; \
     echo "max_allowed_packet = 128M"; \
     echo "innodb_buffer_pool_size = 512M"; \
     echo "innodb_log_file_size = 256M"; \
     echo "innodb_flush_log_at_trx_commit = 2"; \
     echo "innodb_flush_method = O_DIRECT"; \
-    } >> /etc/mysql/mysql.conf.d/shopware.cnf
+    } > /etc/mysql/mysql.conf.d/shopware.cnf
 
 #
 # Application stage

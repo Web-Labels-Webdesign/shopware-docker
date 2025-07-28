@@ -2,51 +2,43 @@
 
 A modern alternative to dockware for Shopware 6 development with all the latest versions and development tools pre-configured.
 
+> **Last updated: 2025-07-28 20:17:43 UTC**
+
 ## 🚀 Quick Start
 
 ```bash
-# Full development environment (recommended)
+# Complete development environment with Apache, MySQL, Mailpit, and Xdebug
 docker run -d \
   --name shopware-dev \
   -p 80:80 -p 3306:3306 -p 8025:8025 -p 9003:9003 \
   -v "./src:/var/www/html/custom/plugins/YourPlugin" \
-  ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-full
+  ghcr.io/weblabels/shopware-docker/shopware-dev:6.7.1.0
 
-# Slim environment for CI/CD
-docker run -d \
-  --name shopware-slim \
-  -p 9000:9000 \
-  -v "./src:/var/www/html/custom/plugins/YourPlugin" \
-  ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-slim
+# Or use the setup script for a complete project
+./setup.sh my-project 6.7.1.0
 ```
 
-## 📋 Available Versions & Variants
+## 📋 Available Versions
 
-| Shopware | PHP | Full Tag                  | Slim Tag                  | Base Image   | Status   |
-| -------- | --- | ------------------------- | ------------------------- | ------------ | -------- |
-| 6.7.x    | 8.4 | `6.7-full`, `latest-full` | `6.7-slim`, `latest-slim` | Ubuntu 22.04 | ✅ Active |
-| 6.6.x    | 8.3 | `6.6-full`                | `6.6-slim`                | Ubuntu 22.04 | ✅ Active |
-| 6.5.x    | 8.2 | `6.5-full`                | `6.5-slim`                | Ubuntu 22.04 | ✅ Active |
+| Shopware Version | PHP Version | Tag | Base Image | Status |
+| ---------------- | ----------- | --- | ---------- | ------ |
+| 6.7.1.0 | 8.4 | `6.7.1.0`, `6.7`, `latest` | Ubuntu 22.04 | ✅ Active |
+| 6.6.10.6 | 8.3 | `6.6.10.6`, `6.6` | Ubuntu 22.04 | ✅ Active |
+| 6.5.8.18 | 8.2 | `6.5.8.18`, `6.5` | Ubuntu 22.04 | ✅ Active |
 
-### Variant Differences
+### What's Included
 
-**Full Variant (`-full`):**
-- Complete development environment
-- Apache + MySQL + Mailpit
-- Xdebug enabled by default
-- All development tools included
-- Demo data pre-installed
+**Complete Development Environment:**
+- **Apache 2.4** with Shopware-optimized configuration
+- **MySQL 8** with built-in database
+- **Mailpit** for email testing on port 8025
+- **Xdebug 3** enabled by default on port 9003
+- **Node.js** (version 22 for Shopware 6.7, version 20 for older versions)
+- **Shopware CLI** and **Composer 2**
+- **Demo data** pre-installed for development
+- **All development tools** included
 
-**Slim Variant (`-slim`):**
-- Minimal production-ready environment
-- PHP-FPM only (no web server)
-- Optimized for CI/CD and containers
-- No development tools or demo data
-- Smaller image size (~60% reduction)
-
-## 🛠️ What's Included
-
-### Full Variant Development Tools
+## 🛠️ Development Tools
 - **Xdebug 3** - Full debugging support with IDE integration
 - **Apache 2.4** - Web server with Shopware-optimized configuration
 - **MySQL 8** - Database server with Shopware-tuned settings
@@ -203,28 +195,17 @@ docker exec <container> shopware-cli project generate-jwt     # Generate JWT key
 
 ## 🔧 Environment Variables
 
-### Common Variables (Both Variants)
-| Variable                           | Default                                             | Description                               |
-| ---------------------------------- | --------------------------------------------------- | ----------------------------------------- |
-| `APP_URL`                          | `http://localhost`                                  | Base URL for Shopware                     |
-| `DATABASE_URL`                     | `mysql://shopware:shopware@localhost:3306/shopware` | Database connection                       |
-| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD` | `1`                                                 | Skip Chromium download for faster startup |
+| Variable                               | Default                                              | Description                               |
+| -------------------------------------- | ---------------------------------------------------- | ----------------------------------------- |
+| `APP_URL`                              | `http://localhost`                                   | Base URL for Shopware                    |
+| `DATABASE_URL`                         | `mysql://shopware:shopware@localhost:3306/shopware` | Database connection                       |
+| `APP_ENV`                              | `dev`                                                | Shopware environment mode                 |
+| `XDEBUG_ENABLED`                       | `1`                                                  | Enable/disable Xdebug                    |
+| `SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS` | `1`                                                  | Only build admin extensions (faster)     |
+| `DISABLE_ADMIN_COMPILATION_TYPECHECK`  | `1`                                                  | Disable TypeScript checking (faster)     |
+| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD`     | `1`                                                  | Skip Chromium download for faster startup|
 
-### Full Variant Variables
-| Variable                               | Default | Description                          |
-| -------------------------------------- | ------- | ------------------------------------ |
-| `XDEBUG_ENABLED`                       | `1`     | Enable/disable Xdebug                |
-| `APP_ENV`                              | `dev`   | Shopware environment mode            |
-| `SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS` | `1`     | Only build admin extensions (faster) |
-| `DISABLE_ADMIN_COMPILATION_TYPECHECK`  | `1`     | Disable TypeScript checking (faster) |
-
-### Slim Variant Variables
-| Variable  | Default | Description               |
-| --------- | ------- | ------------------------- |
-| `APP_ENV` | `prod`  | Shopware environment mode |
-| `VARIANT` | `slim`  | Build variant identifier  |
-
-## 🐛 Debugging Setup (Full Variant Only)
+## 🐛 Debugging Setup
 
 ### VS Code
 Add to your `.vscode/launch.json`:

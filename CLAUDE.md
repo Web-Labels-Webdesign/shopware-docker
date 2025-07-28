@@ -135,11 +135,15 @@ shopware-docker/
 - **Manual Triggers**: Support for building specific versions via workflow dispatch
 
 ### Environment Variables
+All configuration is automatically set in `.env.local` during container startup:
+- `APP_ENV=dev`: Development environment
+- `DATABASE_URL`: MySQL connection (auto-configured)
+- `APP_SECRET` & `JWT_PRIVATE_KEY_PASSPHRASE`: Auto-generated secrets
 - `XDEBUG_ENABLED=1`: Enable/disable Xdebug
-- `APP_URL`: Base URL for Shopware
-- `DATABASE_URL`: Database connection string
 - `SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS=1`: Faster admin builds
 - `DISABLE_ADMIN_COMPILATION_TYPECHECK=1`: Skip TypeScript checking
+- `MAILER_URL`: Mailpit SMTP configuration
+- Plus 20+ additional optimized settings for development
 
 ### Access Points
 - **Frontend**: http://localhost

@@ -279,7 +279,7 @@ jobs:
         run: |
           # Update build date in README
           if grep -q "Last updated:" README.md; then
-            sed -i "s/Last updated: .*/Last updated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')/" README.md
+            sed -i "s/Last updated: .*/Last updated: $(date -u +'%Y-%m-%d %H:%M:%S UTC')\*\*/" README.md
             echo "📊 Updated README with latest build information"
           else
             echo "ℹ️ No 'Last updated' line found in README.md to update"

@@ -54,9 +54,6 @@ RUN apt-get install -y \
 	apache2 \
 	# Database server
 	mysql-server \
-	# Node.js (required for admin/storefront building)
-	nodejs \
-	npm \
 	# Additional tools
 	redis-tools \
 	default-mysql-client \

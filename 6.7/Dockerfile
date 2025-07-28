@@ -142,10 +142,10 @@ RUN mkdir -p var/cache var/log var/sessions \
 	&& chmod -R 777 custom
 
 # Copy configuration files
-COPY 6.7/apache-shopware.conf /etc/apache2/sites-available/000-default.conf
-COPY 6.7/.env.dev /var/www/html/.env
-COPY 6.7/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY 6.7/start.sh /usr/local/bin/start.sh
+COPY apache-shopware.conf /etc/apache2/sites-available/000-default.conf
+COPY .env.dev /var/www/html/.env
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY start.sh /usr/local/bin/start.sh
 
 # Make start script executable
 RUN chmod +x /usr/local/bin/start.sh

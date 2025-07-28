@@ -23,6 +23,7 @@ RUN apt-get install -y \
 	curl \
 	wget \
 	unzip \
+	xz-utils \
 	git \
 	vim \
 	nano \
@@ -62,8 +63,9 @@ RUN apt-get install -y \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 22 (required for Shopware 6.7)
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-	&& apt-get install -y nodejs \
+RUN curl -fsSL https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-x64.tar.xz -o node.tar.xz \
+	&& tar -xJf node.tar.xz -C /usr/local --strip-components=1 \
+	&& rm node.tar.xz \
 	&& npm install -g npm@latest
 
 # Install Composer

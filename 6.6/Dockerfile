@@ -23,6 +23,7 @@ RUN apt-get install -y \
 	curl \
 	wget \
 	unzip \
+	xz-utils \
 	git \
 	vim \
 	nano \
@@ -61,9 +62,10 @@ RUN apt-get install -y \
 	default-mysql-client \
 	&& rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 20 (required for Shopware 6.6)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-	&& apt-get install -y nodejs \
+# Install Node.js 20 (required for Shopware 6.6)  
+RUN curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz -o node.tar.xz \
+	&& tar -xJf node.tar.xz -C /usr/local --strip-components=1 \
+	&& rm node.tar.xz \
 	&& npm install -g npm@latest
 
 # Install Composer

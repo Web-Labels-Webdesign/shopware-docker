@@ -134,14 +134,7 @@ RUN echo "Creating Symfony Flex project..." \
     && cp -r /tmp/shopware/templates/* templates/ 2>/dev/null || mkdir -p templates \
     && cp -r /tmp/shopware/bin/* bin/ 2>/dev/null || mkdir -p bin \
     && echo "Merging composer.json files..." \
-    && php -r "
-        \$base = json_decode(file_get_contents('composer.json'), true);
-        \$shopware = json_decode(file_get_contents('composer.json.shopware'), true);
-        \$merged = array_merge_recursive(\$base, \$shopware);
-        \$merged['require'] = array_merge(\$base['require'] ?? [], \$shopware['require'] ?? []);
-        \$merged['require-dev'] = array_merge(\$base['require-dev'] ?? [], \$shopware['require-dev'] ?? []);
-        file_put_contents('composer.json', json_encode(\$merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-    " \
+    && php -r '$base = json_decode(file_get_contents("composer.json"), true); $shopware = json_decode(file_get_contents("composer.json.shopware"), true); $merged = array_merge_recursive($base, $shopware); $merged["require"] = array_merge($base["require"] ?? [], $shopware["require"] ?? []); $merged["require-dev"] = array_merge($base["require-dev"] ?? [], $shopware["require-dev"] ?? []); file_put_contents("composer.json", json_encode($merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));' \
     && echo "Installing Shopware dependencies..." \
     && COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction --prefer-dist --ignore-platform-reqs \
     && rm -rf /tmp/shopware composer.json.shopware

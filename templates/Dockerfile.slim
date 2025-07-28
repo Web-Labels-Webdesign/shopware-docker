@@ -161,8 +161,11 @@ RUN MAJOR_MINOR=$(echo "$SHOPWARE_VERSION" | cut -d. -f1-2) \
     && rmdir /tmp/shopware-project \
     && echo "APP_ENV=prod" > .env.local \
     && echo "DATABASE_URL=mysql://shopware:shopware@host.docker.internal:3306/shopware" >> .env.local \
-    && echo "APP_URL=http://localhost" >> .env.local \
-    && echo "Optimizing autoloader..." \
+    && echo "APP_URL=http://localhost" >> .env.local
+
+# Optimize autoloader after project is set up
+RUN echo "Optimizing autoloader..." \
+    && cd /var/www/html \
     && COMPOSER_MEMORY_LIMIT=-1 composer dump-autoload --optimize --no-dev
 
 # Create essential directories

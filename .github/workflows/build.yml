@@ -58,13 +58,31 @@ jobs:
       - name: Generate build matrix
         id: generate
         run: |
+          echo "Generating build matrix..."
           node scripts/generate-matrix.mjs
-          echo "matrix<<EOF" >> $GITHUB_OUTPUT
-          cat build-config/github-matrix.json >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "build-summary<<EOF" >> $GITHUB_OUTPUT
-          cat build-config/build-summary.json >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "Checking generated files..."
+          if [ ! -f "build-config/github-matrix.json" ]; then
+            echo "Error: github-matrix.json not found"
+            exit 1
+          fi
+          
+          if [ ! -f "build-config/build-summary.json" ]; then
+            echo "Error: build-summary.json not found"  
+            exit 1
+          fi
+          
+          echo "Files generated successfully:"
+          ls -la build-config/
+          
+          # Use compact JSON output (remove newlines and spaces)
+          MATRIX_JSON=$(cat build-config/github-matrix.json | jq -c .)
+          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+          
+          SUMMARY_JSON=$(cat build-config/build-summary.json | jq -c .)
+          echo "build-summary=$SUMMARY_JSON" >> $GITHUB_OUTPUT
+          
+          echo "Matrix generation completed successfully"
 
       - name: Upload build configuration
         uses: actions/upload-artifact@v4

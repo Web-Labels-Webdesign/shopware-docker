@@ -91,15 +91,22 @@ jobs:
         run: |
           mkdir -p build/${{ matrix.shopware_version }}
           
-          # Create version-specific Dockerfile
-          sed "s/ENV SHOPWARE_VERSION=.*/ENV SHOPWARE_VERSION=${{ matrix.shopware_version }}/" Dockerfile > build/${{ matrix.shopware_version }}/Dockerfile
+          # Determine version directory (use major.minor for directory lookup)
+          VERSION_DIR=$(echo "${{ matrix.shopware_version }}" | cut -d. -f1-2)
+          if [ ! -d "${VERSION_DIR}" ]; then
+            VERSION_DIR="6.7"  # fallback to 6.7 if directory doesn't exist
+          fi
+          
+          # Copy Dockerfile and update version variables
+          cp ${VERSION_DIR}/Dockerfile build/${{ matrix.shopware_version }}/Dockerfile
+          sed -i "s/ENV SHOPWARE_VERSION=.*/ENV SHOPWARE_VERSION=${{ matrix.shopware_version }}/" build/${{ matrix.shopware_version }}/Dockerfile
           sed -i "s/ENV PHP_VERSION=.*/ENV PHP_VERSION=${{ matrix.php_version }}/" build/${{ matrix.shopware_version }}/Dockerfile
           
-          # Copy configuration files
-          cp apache-shopware.conf build/${{ matrix.shopware_version }}/
-          cp .env.dev build/${{ matrix.shopware_version }}/
-          cp supervisord.conf build/${{ matrix.shopware_version }}/
-          cp start.sh build/${{ matrix.shopware_version }}/
+          # Copy configuration files from version-specific directory
+          cp ${VERSION_DIR}/apache-shopware.conf build/${{ matrix.shopware_version }}/
+          cp ${VERSION_DIR}/.env.dev build/${{ matrix.shopware_version }}/
+          cp ${VERSION_DIR}/supervisord.conf build/${{ matrix.shopware_version }}/
+          cp ${VERSION_DIR}/start.sh build/${{ matrix.shopware_version }}/
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5

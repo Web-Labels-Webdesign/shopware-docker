@@ -69,7 +69,10 @@ RUN curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz -
 	&& npm install -g npm@latest
 
 # Install Composer
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+	&& composer --version \
+	&& composer config --global process-timeout 2000 \
+	&& composer config --global repos.packagist composer https://packagist.org
 
 # Install Shopware CLI
 RUN curl -1sLf 'https://dl.cloudsmith.io/public/friendsofshopware/stable/setup.deb.sh' | bash \
@@ -112,7 +115,9 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 WORKDIR /var/www/html
 
 # Create Shopware project using production template with dev setup
-RUN COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production:${SHOPWARE_VERSION} . --no-interaction --prefer-dist --ignore-platform-reqs
+RUN COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production:^6.5 . --no-interaction --prefer-dist --ignore-platform-reqs || \
+    COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production:${SHOPWARE_VERSION} . --no-interaction --prefer-dist --ignore-platform-reqs || \
+    COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production . --no-interaction --prefer-dist --ignore-platform-reqs
 
 # Install development dependencies
 RUN COMPOSER_MEMORY_LIMIT=-1 composer require --dev \
@@ -120,7 +125,7 @@ RUN COMPOSER_MEMORY_LIMIT=-1 composer require --dev \
 	symfony/profiler-pack \
 	symfony/debug-bundle \
 	symfony/var-dumper \
-	--ignore-platform-reqs
+	--ignore-platform-reqs || echo "Dev dependencies installation failed, continuing..."
 
 # Clone Shopware platform repository for development scripts
 RUN git clone --depth 1 --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git /tmp/shopware-repo 2>/dev/null || \

@@ -114,34 +114,19 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 # Set working directory
 WORKDIR /var/www/html
 
-# Create Symfony Flex project and integrate Shopware
-RUN echo "Cleaning working directory..." \
-    && rm -rf ./* .[!.]* 2>/dev/null || true \
-    && echo "Creating Symfony Flex project..." \
+# Create Shopware project using Symfony Flex (ddev approach)
+RUN echo "Creating Symfony Flex project..." \
     && COMPOSER_MEMORY_LIMIT=-1 composer create-project symfony/skeleton . --no-interaction --prefer-dist --ignore-platform-reqs \
-    && echo "Backing up Symfony composer.json..." \
-    && cp composer.json composer.json.symfony \
-    && echo "Adding Shopware Flex recipe..." \
+    && echo "Configuring Symfony Flex for contrib recipes..." \
     && composer config extra.symfony.allow-contrib true \
-    && echo "Cloning Shopware repository at tag v${SHOPWARE_VERSION}..." \
-    && git clone --depth 1 --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git /tmp/shopware 2>/dev/null || \
-       git clone --depth 1 --branch 6.5.8.18 https://github.com/shopware/shopware.git /tmp/shopware 2>/dev/null || \
-       git clone --depth 1 https://github.com/shopware/shopware.git /tmp/shopware \
-    && echo "Copying Shopware files to project..." \
-    && cp /tmp/shopware/composer.json composer.json.shopware \
-    && cp /tmp/shopware/package.json package.json 2>/dev/null || echo '{"scripts": {"admin:build": "echo No admin build"}}' > package.json \
-    && cp /tmp/shopware/symfony.lock symfony.lock 2>/dev/null || true \
-    && cp /tmp/shopware/.env .env.shopware 2>/dev/null || echo "APP_ENV=dev" > .env.shopware \
-    && cp -r /tmp/shopware/config/* config/ 2>/dev/null || mkdir -p config \
-    && cp -r /tmp/shopware/public/* public/ 2>/dev/null || mkdir -p public \
-    && cp -r /tmp/shopware/src/* src/ 2>/dev/null || mkdir -p src \
-    && cp -r /tmp/shopware/templates/* templates/ 2>/dev/null || mkdir -p templates \
-    && cp -r /tmp/shopware/bin/* bin/ 2>/dev/null || mkdir -p bin \
-    && echo "Merging composer.json files..." \
-    && php -r 'if (file_exists("composer.json.symfony") && file_exists("composer.json.shopware")) { $base = json_decode(file_get_contents("composer.json.symfony"), true); $shopware = json_decode(file_get_contents("composer.json.shopware"), true); if ($base && $shopware) { $merged = $shopware; $merged["require"] = array_merge($base["require"] ?? [], $shopware["require"] ?? []); $merged["require-dev"] = array_merge($base["require-dev"] ?? [], $shopware["require-dev"] ?? []); file_put_contents("composer.json", json_encode($merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)); } else { echo "Using Shopware composer.json as fallback"; copy("composer.json.shopware", "composer.json"); } } else { echo "Fallback: using existing composer.json"; }' \
-    && echo "Installing Shopware dependencies..." \
-    && COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction --prefer-dist --ignore-platform-reqs \
-    && rm -rf /tmp/shopware composer.json.symfony composer.json.shopware
+    && echo "Installing Shopware via Symfony Flex..." \
+    && COMPOSER_MEMORY_LIMIT=-1 composer require shopware/core shopware/administration shopware/storefront --no-interaction --ignore-platform-reqs \
+    && echo "Installing additional Shopware components..." \
+    && COMPOSER_MEMORY_LIMIT=-1 composer require shopware/elasticsearch --no-interaction --ignore-platform-reqs || echo "Elasticsearch optional, continuing..." \
+    && echo "Setting up Shopware environment..." \
+    && echo "APP_ENV=dev" > .env.local \
+    && echo "DATABASE_URL=mysql://shopware:shopware@localhost:3306/shopware" >> .env.local \
+    && echo "APP_URL=http://localhost" >> .env.local
 
 # Install development dependencies
 RUN COMPOSER_MEMORY_LIMIT=-1 composer require --dev \
@@ -151,13 +136,14 @@ RUN COMPOSER_MEMORY_LIMIT=-1 composer require --dev \
 	symfony/var-dumper \
 	--ignore-platform-reqs || echo "Dev dependencies installation failed, continuing..."
 
-# Install npm dependencies (package.json already copied from Shopware repo)
+# Install npm dependencies (Symfony Flex should have created package.json)
 RUN if [ -f "package.json" ]; then \
-        echo "Installing npm dependencies from Shopware package.json..." && \
-        npm install --include=dev || echo "NPM install failed, continuing without dev dependencies"; \
+        echo "Installing npm dependencies..." && \
+        npm install --include=dev || echo "NPM install failed, continuing..."; \
     else \
-        echo "No package.json found, creating minimal one..." && \
-        echo '{"scripts": {"admin:build": "echo No admin build", "storefront:build": "echo No storefront build"}}' > package.json; \
+        echo "Creating basic package.json..." && \
+        echo '{"scripts": {"build": "echo Build complete"}}' > package.json && \
+        npm install; \
     fi
 
 # Set proper permissions

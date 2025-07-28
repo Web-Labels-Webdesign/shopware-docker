@@ -14,13 +14,20 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_NAME=${1:-"shopware-project"}
 SHOPWARE_VERSION=${2:-"6.7.1.0"}
-REGISTRY="ghcr.io/your-username/shopware-docker/shopware-dev"
+VARIANT=${3:-"full"}
+REGISTRY="ghcr.io/weblabels/shopware-docker/shopware-dev"
 
-# Available versions
+# Available versions with PHP compatibility
 declare -A VERSIONS=(
-    ["6.5.8.18"]="✅"
-    ["6.6.10.6"]="✅"
-    ["6.7.1.0"]="✅"
+    ["6.5.8.18"]="8.2"
+    ["6.6.10.6"]="8.3"
+    ["6.7.1.0"]="8.4"
+)
+
+# Available variants
+declare -A VARIANTS=(
+    ["full"]="Complete development environment with all services"
+    ["slim"]="Lightweight environment for CI/CD and minimal setups"
 )
 
 print_logo() {
@@ -33,22 +40,30 @@ print_logo() {
 }
 
 print_help() {
-    echo "Usage: $0 [project-name] [shopware-version]"
+    echo "Usage: $0 [project-name] [shopware-version] [variant]"
     echo ""
     echo "Arguments:"
     echo "  project-name      Name of your project directory (default: shopware-project)"
     echo "  shopware-version  Shopware version to use (default: 6.7.1.0)"
+    echo "  variant          Container variant to use (default: full)"
     echo ""
     echo "Available versions:"
     for version in "${!VERSIONS[@]}"; do
-        status=${VERSIONS[$version]}
-        echo "  • $version $status"
+        php_version=${VERSIONS[$version]}
+        echo "  • $version (PHP $php_version)"
+    done
+    echo ""
+    echo "Available variants:"
+    for variant in "${!VARIANTS[@]}"; do
+        description=${VARIANTS[$variant]}
+        echo "  • $variant: $description"
     done
     echo ""
     echo "Examples:"
-    echo "  $0                           # Create 'shopware-project' with latest version"
-    echo "  $0 my-shop                   # Create 'my-shop' with latest version"
-    echo "  $0 my-shop 6.6.10.6         # Create 'my-shop' with specific version"
+    echo "  $0                              # Create 'shopware-project' with latest full"
+    echo "  $0 my-shop                      # Create 'my-shop' with latest full"
+    echo "  $0 my-shop 6.6.10.6            # Create 'my-shop' with specific version"
+    echo "  $0 my-shop 6.7.1.0 slim        # Create 'my-shop' with slim variant"
     echo ""
 }
 
@@ -56,6 +71,14 @@ validate_version() {
     if [[ ! " ${!VERSIONS[@]} " =~ " ${SHOPWARE_VERSION} " ]]; then
         echo -e "${RED}❌ Invalid Shopware version: $SHOPWARE_VERSION${NC}"
         echo "Available versions: ${!VERSIONS[@]}"
+        exit 1
+    fi
+}
+
+validate_variant() {
+    if [[ ! " ${!VARIANTS[@]} " =~ " ${VARIANT} " ]]; then
+        echo -e "${RED}❌ Invalid variant: $VARIANT${NC}"
+        echo "Available variants: ${!VARIANTS[@]}"
         exit 1
     fi
 }
@@ -106,14 +129,84 @@ create_project() {
 }
 
 create_docker_compose() {
-    echo -e "${BLUE}🐳 Creating docker-compose.yml...${NC}"
+    echo -e "${BLUE}🐳 Creating docker-compose.yml for $VARIANT variant...${NC}"
     
-    cat > docker-compose.yml << EOF
+    # Determine image tag based on variant
+    IMAGE_TAG="${SHOPWARE_VERSION}"
+    if [ "$VARIANT" = "slim" ]; then
+        IMAGE_TAG="${SHOPWARE_VERSION}-slim"
+    fi
+    
+    if [ "$VARIANT" = "slim" ]; then
+        # Slim variant compose file
+        cat > docker-compose.yml << EOF
 version: '3.8'
 
 services:
   shopware:
-    image: ${REGISTRY}:${SHOPWARE_VERSION}
+    image: ${REGISTRY}:${IMAGE_TAG}
+    container_name: ${PROJECT_NAME}_shopware_slim
+    ports:
+      - "9000:9000"  # PHP-FPM
+    volumes:
+      # Mount your custom code
+      - "./custom/plugins:/var/www/html/custom/plugins"
+      - "./custom/themes:/var/www/html/custom/themes"
+      
+      # Application data (minimal)
+      - "shopware_var:/var/www/html/var"
+      - "shopware_files:/var/www/html/files"
+    
+    environment:
+      - VARIANT=slim
+      - SHOPWARE_VERSION=${SHOPWARE_VERSION}
+      - PHP_VERSION=${VERSIONS[$SHOPWARE_VERSION]}
+    
+    networks:
+      - shopware
+    
+    # Health check for slim variant
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # External services for slim variant
+  nginx:
+    image: nginx:alpine
+    container_name: ${PROJECT_NAME}_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - "./nginx.conf:/etc/nginx/nginx.conf:ro"
+      - "shopware_public:/var/www/html/public"
+    depends_on:
+      - shopware
+    networks:
+      - shopware
+
+volumes:
+  shopware_var:
+    driver: local
+  shopware_files:
+    driver: local
+  shopware_public:
+    driver: local
+
+networks:
+  shopware:
+    driver: bridge
+EOF
+    else
+        # Full variant compose file  
+        cat > docker-compose.yml << EOF
+version: '3.8'
+
+services:
+  shopware:
+    image: ${REGISTRY}:${IMAGE_TAG}
     container_name: ${PROJECT_NAME}_shopware
     ports:
       - "80:80"      # Shopware Frontend & Admin
@@ -149,6 +242,11 @@ services:
 
       # Custom APP_URL (change if needed)
       - APP_URL=http://localhost
+      
+      # Variant configuration
+      - VARIANT=full
+      - SHOPWARE_VERSION=${SHOPWARE_VERSION}
+      - PHP_VERSION=${VERSIONS[$SHOPWARE_VERSION]}
 
     networks:
       - shopware
@@ -173,6 +271,7 @@ networks:
   shopware:
     driver: bridge
 EOF
+    fi
 }
 
 create_directories() {
@@ -442,11 +541,13 @@ main() {
     
     echo -e "${BLUE}🎯 Project Setup${NC}"
     echo "Project Name: $PROJECT_NAME"
-    echo "Shopware Version: $SHOPWARE_VERSION"
+    echo "Shopware Version: $SHOPWARE_VERSION (PHP ${VERSIONS[$SHOPWARE_VERSION]})"
+    echo "Variant: $VARIANT"
     echo ""
     
     # Validate inputs
     validate_version
+    validate_variant
     
     # Check requirements
     check_requirements

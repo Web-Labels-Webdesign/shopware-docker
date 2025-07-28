@@ -105,10 +105,7 @@ COPY apache-shopware.conf /etc/apache2/sites-available/000-default.conf
 # Configure MySQL
 RUN echo "sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
 	&& echo "max_allowed_packet = 128M" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
-	&& echo "innodb_buffer_pool_size = 1G" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
-	&& mkdir -p /var/lib/mysql-home \
-	&& chown mysql:mysql /var/lib/mysql-home \
-	&& usermod -d /var/lib/mysql-home mysql
+	&& echo "innodb_buffer_pool_size = 1G" >> /etc/mysql/mysql.conf.d/mysqld.cnf
 
 # Create web directory
 RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html

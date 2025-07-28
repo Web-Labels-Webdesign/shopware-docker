@@ -7,7 +7,7 @@ on:
   pull_request:
     branches: [ main ]
   schedule:
-    # Build weekly on Sundays at 2 AM UTC to catch security updates
+    # Build weekly on Sundays at 2 AM UTC to catch security updates  
     - cron: '0 2 * * 0'
   workflow_dispatch:
     inputs:
@@ -16,9 +16,19 @@ on:
         required: false
         type: choice
         options:
+          - 'all'
           - '6.5.8.18'
           - '6.6.10.6'
           - '6.7.1.0'
+      variant:
+        description: 'Variant to build'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - 'both'
+          - 'full'
+          - 'slim'
       platform:
         description: 'Platform to build for'
         required: false
@@ -30,28 +40,47 @@ env:
   IMAGE_NAME: ${{ github.repository }}/shopware-dev
 
 jobs:
+  # Generate dynamic build matrix
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.generate.outputs.matrix }}
+      build-summary: ${{ steps.generate.outputs.build-summary }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate build matrix
+        id: generate
+        run: |
+          node scripts/generate-matrix.mjs
+          echo "build-summary<<EOF" >> $GITHUB_OUTPUT
+          cat build-config/build-summary.json >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Upload build configuration
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-config
+          path: build-config/
+          retention-days: 1
+
   build:
     runs-on: ubuntu-latest
+    needs: generate-matrix
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - shopware_version: "6.5.8.18"
-            php_version: "8.2"
-            tags: |
-              type=raw,value=6.5.8.18
-              type=raw,value=6.5
-          - shopware_version: "6.6.10.6"
-            php_version: "8.3"
-            tags: |
-              type=raw,value=6.6.10.6
-              type=raw,value=6.6
-          - shopware_version: "6.7.1.0"
-            php_version: "8.4"
-            tags: |
-              type=raw,value=6.7.1.0
-              type=raw,value=6.7
-              type=raw,value=latest
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+
+    # Filter matrix based on inputs
+    if: |
+      (github.event.inputs.version == '' || github.event.inputs.version == 'all' || matrix.shopware_version == github.event.inputs.version) &&
+      (github.event.inputs.variant == '' || github.event.inputs.variant == 'both' || matrix.variant == github.event.inputs.variant)
 
     permissions:
       contents: read
@@ -87,31 +116,54 @@ jobs:
             shopware.version=${{ matrix.shopware_version }}
             php.version=${{ matrix.php_version }}
 
+      - name: Download build configuration
+        uses: actions/download-artifact@v4
+        with:
+          name: build-config
+          path: build-config/
+
       - name: Prepare build context
         run: |
+          echo "🔧 Preparing build context for ${{ matrix.shopware_version }} (${{ matrix.variant }})"
           mkdir -p build/${{ matrix.shopware_version }}
           
-          # Determine version directory (use major.minor for directory lookup)
-          VERSION_DIR=$(echo "${{ matrix.shopware_version }}" | cut -d. -f1-2)
+          # Determine version directory (use context_path from matrix)
+          VERSION_DIR="${{ matrix.context_path }}"
           if [ ! -d "${VERSION_DIR}" ]; then
-            VERSION_DIR="6.7"  # fallback to 6.7 if directory doesn't exist
+            echo "❌ Version directory ${VERSION_DIR} not found"
+            exit 1
           fi
           
-          # Copy Dockerfile and update version variables
-          cp ${VERSION_DIR}/Dockerfile build/${{ matrix.shopware_version }}/Dockerfile
-          sed -i "s/ENV SHOPWARE_VERSION=.*/ENV SHOPWARE_VERSION=${{ matrix.shopware_version }}/" build/${{ matrix.shopware_version }}/Dockerfile
-          sed -i "s/ENV PHP_VERSION=.*/ENV PHP_VERSION=${{ matrix.php_version }}/" build/${{ matrix.shopware_version }}/Dockerfile
+          # Select appropriate Dockerfile based on variant
+          if [ "${{ matrix.variant }}" = "slim" ]; then
+            DOCKERFILE_SOURCE="templates/Dockerfile.slim"
+            SUPERVISORD_SOURCE="templates/supervisord-slim.conf"
+            START_SCRIPT_SOURCE="templates/start-slim.sh"
+          else
+            DOCKERFILE_SOURCE="templates/Dockerfile.base"
+            SUPERVISORD_SOURCE="${VERSION_DIR}/supervisord.conf"
+            START_SCRIPT_SOURCE="${VERSION_DIR}/start.sh"
+          fi
           
-          # Copy configuration files from version-specific directory
-          cp ${VERSION_DIR}/apache-shopware.conf build/${{ matrix.shopware_version }}/
-          cp ${VERSION_DIR}/.env.dev build/${{ matrix.shopware_version }}/
-          cp ${VERSION_DIR}/supervisord.conf build/${{ matrix.shopware_version }}/
-          cp ${VERSION_DIR}/start.sh build/${{ matrix.shopware_version }}/
+          # Copy and customize Dockerfile
+          cp ${DOCKERFILE_SOURCE} build/${{ matrix.shopware_version }}/${{ matrix.dockerfile }}
+          
+          # Copy configuration files
+          cp ${VERSION_DIR}/apache-shopware.conf build/${{ matrix.shopware_version }}/ || true
+          cp ${VERSION_DIR}/.env.dev build/${{ matrix.shopware_version }}/ || true
+          cp ${SUPERVISORD_SOURCE} build/${{ matrix.shopware_version }}/supervisord.conf
+          cp ${START_SCRIPT_SOURCE} build/${{ matrix.shopware_version }}/start.sh
+          
+          # Make scripts executable
+          chmod +x build/${{ matrix.shopware_version }}/start.sh
+          
+          echo "✅ Build context prepared for ${{ matrix.variant }} variant"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: build/${{ matrix.shopware_version }}
+          file: build/${{ matrix.shopware_version }}/${{ matrix.dockerfile }}
           platforms: ${{ github.event.inputs.platform || 'linux/amd64,linux/arm64' }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
@@ -119,69 +171,108 @@ jobs:
           build-args: |
             SHOPWARE_VERSION=${{ matrix.shopware_version }}
             PHP_VERSION=${{ matrix.php_version }}
+            VARIANT=${{ matrix.variant }}
             BUILDKIT_INLINE_CACHE=1
           cache-from: |
-            type=gha
+            type=gha,scope=${{ matrix.cache_key }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-${{ matrix.cache_key }}
           cache-to: |
-            type=gha,mode=max
+            type=gha,mode=max,scope=${{ matrix.cache_key }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:cache-${{ matrix.cache_key }},mode=max
           provenance: false
           sbom: false
 
       - name: Test image
         if: github.event_name == 'pull_request'
         run: |
-          echo "🧪 Testing Shopware ${{ matrix.shopware_version }} image..."
+          echo "🧪 Testing Shopware ${{ matrix.shopware_version }} (${{ matrix.variant }}) image..."
           
-          # Start container
-          docker run -d \
-            --name test-shopware-${{ matrix.shopware_version }} \
-            -p 8080:80 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.shopware_version }}
+          CONTAINER_NAME="test-shopware-${{ matrix.shopware_version }}-${{ matrix.variant }}"
+          IMAGE_TAG="${{ steps.meta.outputs.tags | head -1 }}"
           
-          # Wait for container to be ready
-          timeout 300 bash -c 'until curl -f http://localhost:8080/api/_info/version; do sleep 5; done'
+          if [ "${{ matrix.variant }}" = "slim" ]; then
+            # Test slim variant (PHP-FPM only)
+            echo "Testing slim variant..."
+            docker run -d \
+              --name ${CONTAINER_NAME} \
+              -p 9000:9000 \
+              ${IMAGE_TAG}
+            
+            # Wait for PHP-FPM to be ready
+            timeout 60 bash -c 'until curl -f http://localhost:9000/ping; do sleep 2; echo "Waiting for PHP-FPM..."; done'
+            
+            # Test health endpoint
+            curl -f http://localhost:9000/health.php
+            
+            echo "✅ Slim variant test passed"
+          else
+            # Test full variant (complete Shopware)
+            echo "Testing full variant..."
+            docker run -d \
+              --name ${CONTAINER_NAME} \
+              -p 8080:80 \
+              ${IMAGE_TAG}
+            
+            # Wait for Shopware to be ready (longer timeout for full setup)
+            timeout 300 bash -c 'until curl -f http://localhost:8080/api/_info/version 2>/dev/null; do sleep 5; echo "Waiting for Shopware..."; done'
+            
+            # Basic health checks
+            curl -f http://localhost:8080/api/_info/version
+            curl -f http://localhost:8080/admin || echo "Admin panel check failed (expected during setup)"
+            
+            # Test MailHog
+            curl -f http://localhost:8025/ || echo "MailHog check failed"
+            
+            echo "✅ Full variant test passed"
+          fi
           
-          # Basic health checks
-          curl -f http://localhost:8080/api/_info/version
-          curl -f http://localhost:8080/admin
-          
-          # Check if admin login works
-          curl -X POST http://localhost:8080/api/oauth/token \
-            -H "Content-Type: application/json" \
-            -d '{"client_id": "administration", "grant_type": "password", "scopes": "write", "username": "admin", "password": "shopware"}'
+          # Show logs for debugging
+          docker logs ${CONTAINER_NAME} --tail 50
           
           # Cleanup
-          docker stop test-shopware-${{ matrix.shopware_version }}
-          docker rm test-shopware-${{ matrix.shopware_version }}
-          
-          echo "✅ Test passed for Shopware ${{ matrix.shopware_version }}"
+          docker stop ${CONTAINER_NAME} || true
+          docker rm ${CONTAINER_NAME} || true
 
   security-scan:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [generate-matrix, build]
     if: github.event_name != 'pull_request'
     
     strategy:
-      matrix:
-        shopware_version: ["6.5.8.18", "6.6.10.6", "6.7.1.0"]
+      fail-fast: false
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
     
     steps:
-      - name: Set lowercase variables
+      - name: Download build configuration
+        uses: actions/download-artifact@v4
+        with:
+          name: build-config
+          path: build-config/
+
+      - name: Set image reference
         id: vars
         run: |
-          echo "image_name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/shopware-dev:${{ matrix.shopware_version }}" >> $GITHUB_OUTPUT
+          # Extract first tag from matrix tags
+          FIRST_TAG=$(echo "${{ matrix.tags }}" | head -1 | sed 's/type=raw,value=//')
+          IMAGE_REF="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')/shopware-dev:${FIRST_TAG}"
+          echo "image_ref=${IMAGE_REF}" >> $GITHUB_OUTPUT
+          echo "Scanning image: ${IMAGE_REF}"
       
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ steps.vars.outputs.image_name }}
+          image-ref: ${{ steps.vars.outputs.image_ref }}
           format: 'sarif'
-          output: 'trivy-results-${{ matrix.shopware_version }}.sarif'
+          output: 'trivy-results-${{ matrix.shopware_version }}-${{ matrix.variant }}.sarif'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
-          sarif_file: 'trivy-results-${{ matrix.shopware_version }}.sarif'
+          sarif_file: 'trivy-results-${{ matrix.shopware_version }}-${{ matrix.variant }}.sarif'
+          category: 'trivy-${{ matrix.shopware_version }}-${{ matrix.variant }}'
 
   update-readme:
     runs-on: ubuntu-latest

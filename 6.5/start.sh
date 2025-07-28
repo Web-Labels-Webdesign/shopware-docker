@@ -19,12 +19,21 @@ setup_mysql() {
     # Initialize MySQL data directory if it doesn't exist
     if [ ! -d "/var/lib/mysql/mysql" ]; then
         echo "🔧 Initializing MySQL data directory..."
-        mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql
+        if ! mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql; then
+            echo "❌ MySQL initialization failed"
+            exit 1
+        fi
         chown -R mysql:mysql /var/lib/mysql
+        chmod -R 755 /var/lib/mysql
     fi
     
     # Start MySQL in background
-    service mysql start
+    echo "🔧 Starting MySQL service..."
+    if ! service mysql start; then
+        echo "❌ Failed to start MySQL service"
+        cat /var/log/mysql/error.log 2>/dev/null || echo "No MySQL error log available"
+        exit 1
+    fi
     wait_for_mysql
     
     # Create database and user if they don't exist

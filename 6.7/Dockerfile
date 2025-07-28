@@ -114,13 +114,37 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 # Set working directory
 WORKDIR /var/www/html
 
-# Create Shopware project using the correct template
-RUN echo "Creating Shopware project..." \
-    && COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production-template:^6.7 . --no-interaction --prefer-dist --ignore-platform-reqs 2>/dev/null || \
-    COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production-template . --no-interaction --prefer-dist --ignore-platform-reqs 2>/dev/null || \
-    (echo "Creating basic Symfony project and adding Shopware manually..." \
+# Create Symfony Flex project and integrate Shopware
+RUN echo "Creating Symfony Flex project..." \
     && COMPOSER_MEMORY_LIMIT=-1 composer create-project symfony/skeleton . --no-interaction --prefer-dist --ignore-platform-reqs \
-    && COMPOSER_MEMORY_LIMIT=-1 composer require shopware/core shopware/administration shopware/storefront --ignore-platform-reqs)
+    && echo "Adding Shopware Flex recipe..." \
+    && composer config extra.symfony.allow-contrib true \
+    && echo "Cloning Shopware repository at tag v${SHOPWARE_VERSION}..." \
+    && git clone --depth 1 --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git /tmp/shopware 2>/dev/null || \
+       git clone --depth 1 --branch 6.7.1.0 https://github.com/shopware/shopware.git /tmp/shopware 2>/dev/null || \
+       git clone --depth 1 https://github.com/shopware/shopware.git /tmp/shopware \
+    && echo "Copying Shopware files to project..." \
+    && cp /tmp/shopware/composer.json composer.json.shopware \
+    && cp /tmp/shopware/package.json package.json 2>/dev/null || echo "No package.json in Shopware repo" \
+    && cp /tmp/shopware/symfony.lock symfony.lock 2>/dev/null || true \
+    && cp /tmp/shopware/.env .env.shopware \
+    && cp -r /tmp/shopware/config/* config/ 2>/dev/null || mkdir -p config \
+    && cp -r /tmp/shopware/public/* public/ 2>/dev/null || mkdir -p public \
+    && cp -r /tmp/shopware/src/* src/ 2>/dev/null || mkdir -p src \
+    && cp -r /tmp/shopware/templates/* templates/ 2>/dev/null || mkdir -p templates \
+    && cp -r /tmp/shopware/bin/* bin/ 2>/dev/null || mkdir -p bin \
+    && echo "Merging composer.json files..." \
+    && php -r "
+        \$base = json_decode(file_get_contents('composer.json'), true);
+        \$shopware = json_decode(file_get_contents('composer.json.shopware'), true);
+        \$merged = array_merge_recursive(\$base, \$shopware);
+        \$merged['require'] = array_merge(\$base['require'] ?? [], \$shopware['require'] ?? []);
+        \$merged['require-dev'] = array_merge(\$base['require-dev'] ?? [], \$shopware['require-dev'] ?? []);
+        file_put_contents('composer.json', json_encode(\$merged, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    " \
+    && echo "Installing Shopware dependencies..." \
+    && COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction --prefer-dist --ignore-platform-reqs \
+    && rm -rf /tmp/shopware composer.json.shopware
 
 # Install development dependencies
 RUN COMPOSER_MEMORY_LIMIT=-1 composer require --dev \
@@ -130,30 +154,14 @@ RUN COMPOSER_MEMORY_LIMIT=-1 composer require --dev \
 	symfony/var-dumper \
 	--ignore-platform-reqs || echo "Dev dependencies installation failed, continuing..."
 
-# Clone Shopware platform repository for development scripts
-RUN git clone --depth 1 --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git /tmp/shopware-repo 2>/dev/null || \
-	git clone --depth 1 --branch 6.7.1.0 https://github.com/shopware/shopware.git /tmp/shopware-repo 2>/dev/null || \
-	git clone --depth 1 https://github.com/shopware/shopware.git /tmp/shopware-repo \
-	&& cp /tmp/shopware-repo/package.json /var/www/html/ 2>/dev/null || \
-	echo '{"scripts": {"admin:build": "echo No admin build", "storefront:build": "echo No storefront build"}}' > /var/www/html/package.json \
-	&& rm -rf /tmp/shopware-repo
-
-# Install npm dependencies for development scripts
-RUN npm install --include=dev || echo "NPM install failed, continuing without dev dependencies"
-
-# Add Shopware development scripts to package.json
-RUN npm pkg set scripts.admin:code-mods="@npm:admin run code-mods --" \
-	&& npm pkg set scripts.admin:build="@npm:admin run build" \
-	&& npm pkg set scripts.admin:dev="@npm:admin run dev" \
-	&& npm pkg set scripts.admin:watch="@npm:admin run watch" \
-	&& npm pkg set scripts.storefront:build="@npm:storefront run build" \
-	&& npm pkg set scripts.storefront:dev="@npm:storefront run dev" \
-	&& npm pkg set scripts.storefront:watch="@npm:storefront run watch" \
-	&& npm pkg set scripts.build:admin="bin/console bundle:dump && npm run admin:build" \
-	&& npm pkg set scripts.build:storefront="npm run storefront:build" \
-	&& npm pkg set scripts.build:all="npm run build:admin && npm run build:storefront" \
-	&& npm pkg set scripts.watch:admin="npm run admin:watch" \
-	&& npm pkg set scripts.watch:storefront="npm run storefront:watch"
+# Install npm dependencies (package.json already copied from Shopware repo)
+RUN if [ -f "package.json" ]; then \
+        echo "Installing npm dependencies from Shopware package.json..." && \
+        npm install --include=dev || echo "NPM install failed, continuing without dev dependencies"; \
+    else \
+        echo "No package.json found, creating minimal one..." && \
+        echo '{"scripts": {"admin:build": "echo No admin build", "storefront:build": "echo No storefront build"}}' > package.json; \
+    fi
 
 # Set proper permissions
 RUN chown -R www-data:www-data /var/www/html \

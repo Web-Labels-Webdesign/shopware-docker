@@ -115,7 +115,9 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 WORKDIR /var/www/html
 
 # Create Shopware project using Symfony Flex (ddev approach)
-RUN echo "Creating Symfony Flex project..." \
+RUN echo "Cleaning working directory..." \
+    && rm -rf ./* .[!.]* 2>/dev/null || true \
+    && echo "Creating Symfony Flex project..." \
     && COMPOSER_MEMORY_LIMIT=-1 composer create-project symfony/skeleton . --no-interaction --prefer-dist --ignore-platform-reqs \
     && echo "Configuring Symfony Flex for contrib recipes..." \
     && composer config extra.symfony.allow-contrib true \
@@ -146,14 +148,15 @@ RUN if [ -f "package.json" ]; then \
         npm install; \
     fi
 
-# Set proper permissions
-RUN chown -R www-data:www-data /var/www/html \
+# Create required directories and set proper permissions
+RUN mkdir -p var/cache var/log var/sessions \
+	&& mkdir -p public/media public/thumbnail public/sitemap \
+	&& mkdir -p files \
+	&& chown -R www-data:www-data /var/www/html \
 	&& chmod -R 755 /var/www/html \
-	&& chmod -R 777 /var/www/html/var \
-	&& chmod -R 777 /var/www/html/public/media \
-	&& chmod -R 777 /var/www/html/public/thumbnail \
-	&& chmod -R 777 /var/www/html/public/sitemap \
-	&& chmod -R 777 /var/www/html/files
+	&& chmod -R 777 var \
+	&& chmod -R 777 public/media public/thumbnail public/sitemap \
+	&& chmod -R 777 files
 
 # Copy configuration files
 COPY .env.dev /var/www/html/.env

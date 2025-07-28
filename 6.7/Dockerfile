@@ -1,14 +1,14 @@
-# Shopware 6.7.1.0 Development Environment
+# Shopware 6.7 Development Environment
 FROM ubuntu:22.04
 
-LABEL maintainer="Your Team <dev@yourcompany.com>"
-LABEL org.opencontainers.image.description="Shopware 6.7.1.0 development environment with all dev tools"
+LABEL maintainer="Development Team"
+LABEL description="Shopware 6.7 development environment with all dev tools"
 
 # Avoid prompts from apt
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Berlin
 
-# Set Shopware version
+# Set Shopware and PHP versions
 ENV SHOPWARE_VERSION=6.7.1.0
 ENV PHP_VERSION=8.4
 
@@ -54,15 +54,12 @@ RUN apt-get install -y \
 	apache2 \
 	# Database server
 	mysql-server \
-	# Node.js (required for admin/storefront building)
-	nodejs \
-	npm \
 	# Additional tools
 	redis-tools \
 	default-mysql-client \
 	&& rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 22 (required for Shopware 6.7)
+# Install Node.js 22 (required for Shopware 6.7 development)
 RUN curl -fsSL https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-x64.tar.xz -o node.tar.xz \
 	&& tar -xJf node.tar.xz -C /usr/local --strip-components=1 \
 	&& rm node.tar.xz \
@@ -71,8 +68,7 @@ RUN curl -fsSL https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-x64.tar.xz -
 # Install Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
 	&& composer --version \
-	&& composer config --global process-timeout 2000 \
-	&& composer config --global repos.packagist composer https://packagist.org
+	&& composer config --global process-timeout 2000
 
 # Install Shopware CLI
 RUN curl -1sLf 'https://dl.cloudsmith.io/public/friendsofshopware/stable/setup.deb.sh' | bash \
@@ -100,9 +96,6 @@ RUN a2enmod rewrite \
 	&& a2enmod headers \
 	&& a2enmod ssl
 
-# Apache virtual host for Shopware
-COPY apache-shopware.conf /etc/apache2/sites-available/000-default.conf
-
 # Configure MySQL
 RUN echo "sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
 	&& echo "max_allowed_packet = 128M" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
@@ -114,51 +107,45 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 # Set working directory
 WORKDIR /var/www/html
 
-# Create Shopware project using Symfony Flex (ddev approach)
-RUN echo "Creating Symfony Flex project..." \
-    && COMPOSER_MEMORY_LIMIT=-1 composer create-project symfony/skeleton . --no-interaction --prefer-dist --ignore-platform-reqs \
-    && echo "Configuring Symfony Flex for contrib recipes..." \
-    && composer config extra.symfony.allow-contrib true \
-    && echo "Installing Shopware via Symfony Flex..." \
-    && COMPOSER_MEMORY_LIMIT=-1 composer require shopware/core shopware/administration shopware/storefront --no-interaction --ignore-platform-reqs \
-    && echo "Installing additional Shopware components..." \
-    && COMPOSER_MEMORY_LIMIT=-1 composer require shopware/elasticsearch --no-interaction --ignore-platform-reqs || echo "Elasticsearch optional, continuing..." \
-    && echo "Setting up Shopware environment..." \
-    && echo "APP_ENV=dev" > .env.local \
-    && echo "DATABASE_URL=mysql://shopware:shopware@localhost:3306/shopware" >> .env.local \
-    && echo "APP_URL=http://localhost" >> .env.local
+# Clone Shopware development repository
+RUN echo "Cloning Shopware development repository..." \
+	&& git clone --depth 1 --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git . 2>/dev/null || \
+	   git clone --depth 1 --branch 6.7.1.0 https://github.com/shopware/shopware.git . 2>/dev/null || \
+	   git clone --depth 1 https://github.com/shopware/shopware.git . \
+	&& echo "Shopware development repository cloned successfully"
 
-# Install development dependencies
-RUN COMPOSER_MEMORY_LIMIT=-1 composer require --dev \
-	shopware/dev-tools \
-	symfony/profiler-pack \
-	symfony/debug-bundle \
-	symfony/var-dumper \
-	--ignore-platform-reqs || echo "Dev dependencies installation failed, continuing..."
+# Install PHP dependencies (development mode)
+RUN echo "Installing PHP dependencies for development..." \
+	&& COMPOSER_MEMORY_LIMIT=-1 composer install --no-interaction --ignore-platform-reqs \
+	&& echo "PHP dependencies installed"
 
-# Install npm dependencies (Symfony Flex should have created package.json)
-RUN if [ -f "package.json" ]; then \
-        echo "Installing npm dependencies..." && \
-        npm install --include=dev || echo "NPM install failed, continuing..."; \
-    else \
-        echo "Creating basic package.json..." && \
-        echo '{"scripts": {"build": "echo Build complete"}}' > package.json && \
-        npm install; \
-    fi
+# Install Node.js dependencies for development
+RUN echo "Installing Node.js dependencies..." \
+	&& npm ci \
+	&& echo "Node.js dependencies installed"
 
-# Set proper permissions
-RUN chown -R www-data:www-data /var/www/html \
+# Build development assets
+RUN echo "Building development assets..." \
+	&& npm run build-js \
+	&& echo "Development assets built"
+
+# Create required directories and set permissions
+RUN mkdir -p var/cache var/log var/sessions \
+	&& mkdir -p public/media public/thumbnail public/sitemap \
+	&& mkdir -p files \
+	&& mkdir -p custom/plugins custom/themes custom/apps \
+	&& chown -R www-data:www-data /var/www/html \
 	&& chmod -R 755 /var/www/html \
-	&& chmod -R 777 /var/www/html/var \
-	&& chmod -R 777 /var/www/html/public/media \
-	&& chmod -R 777 /var/www/html/public/thumbnail \
-	&& chmod -R 777 /var/www/html/public/sitemap \
-	&& chmod -R 777 /var/www/html/files
+	&& chmod -R 777 var \
+	&& chmod -R 777 public/media public/thumbnail public/sitemap \
+	&& chmod -R 777 files \
+	&& chmod -R 777 custom
 
 # Copy configuration files
-COPY .env.dev /var/www/html/.env
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY start.sh /usr/local/bin/start.sh
+COPY 6.7/apache-shopware.conf /etc/apache2/sites-available/000-default.conf
+COPY 6.7/.env.dev /var/www/html/.env
+COPY 6.7/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY 6.7/start.sh /usr/local/bin/start.sh
 
 # Make start script executable
 RUN chmod +x /usr/local/bin/start.sh

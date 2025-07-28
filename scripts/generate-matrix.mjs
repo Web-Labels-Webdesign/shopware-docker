@@ -328,12 +328,8 @@ async function main() {
     console.log(`🐘 PHP versions: ${summary.php_versions.join(', ')}`);
     console.log(`📦 Shopware versions: ${summary.shopware_versions.join(', ')}`);
     
-    // Output for GitHub Actions
-    if (process.env.GITHUB_OUTPUT) {
-      const githubOutput = `matrix=${JSON.stringify(githubMatrix)}`;
-      await fs.appendFile(process.env.GITHUB_OUTPUT, githubOutput);
-      console.log('✅ GitHub Actions output written');
-    }
+    // GitHub Actions will read the matrix from build-config/github-matrix.json
+    console.log('✅ Matrix files generated for GitHub Actions');
     
   } catch (error) {
     console.error('❌ Error generating matrix:');

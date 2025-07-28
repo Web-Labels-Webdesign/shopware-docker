@@ -59,6 +59,9 @@ jobs:
         id: generate
         run: |
           node scripts/generate-matrix.mjs
+          echo "matrix<<EOF" >> $GITHUB_OUTPUT
+          cat build-config/github-matrix.json >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
           echo "build-summary<<EOF" >> $GITHUB_OUTPUT
           cat build-config/build-summary.json >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT

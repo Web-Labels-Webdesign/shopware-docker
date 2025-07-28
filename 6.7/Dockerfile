@@ -104,8 +104,7 @@ RUN echo "sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CRE
 	&& echo "innodb_buffer_pool_size = 1G" >> /etc/mysql/mysql.conf.d/mysqld.cnf \
 	&& mkdir -p /var/lib/mysql-home \
 	&& chown mysql:mysql /var/lib/mysql-home \
-	&& usermod -d /var/lib/mysql-home mysql \
-	&& mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql
+	&& usermod -d /var/lib/mysql-home mysql
 
 # Create web directory
 RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html

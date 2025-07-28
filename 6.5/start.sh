@@ -16,6 +16,13 @@ wait_for_mysql() {
 setup_mysql() {
     echo "🔧 Setting up MySQL database..."
     
+    # Initialize MySQL data directory if it doesn't exist
+    if [ ! -d "/var/lib/mysql/mysql" ]; then
+        echo "🔧 Initializing MySQL data directory..."
+        mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql
+        chown -R mysql:mysql /var/lib/mysql
+    fi
+    
     # Start MySQL in background
     service mysql start
     wait_for_mysql

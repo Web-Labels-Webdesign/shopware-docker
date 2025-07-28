@@ -295,8 +295,8 @@ jobs:
             curl -f http://localhost:8080/api/_info/version
             curl -f http://localhost:8080/admin || echo "Admin panel check failed (expected during setup)"
             
-            # Test MailHog
-            curl -f http://localhost:8025/ || echo "MailHog check failed"
+            # Test Mailpit
+            curl -f http://localhost:8025/ || echo "Mailpit check failed"
             
             echo "✅ Full variant test passed"
           fi

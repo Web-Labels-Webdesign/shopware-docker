@@ -5,89 +5,109 @@ A modern alternative to dockware for Shopware 6 development with all the latest 
 ## 🚀 Quick Start
 
 ```bash
-# Use with docker-compose (recommended)
-docker-compose up -d
-
-# Or run directly
+# Full development environment (recommended)
 docker run -d \
   --name shopware-dev \
   -p 80:80 -p 3306:3306 -p 8025:8025 -p 9003:9003 \
   -v "./src:/var/www/html/custom/plugins/YourPlugin" \
-  ghcr.io/your-username/shopware-docker/shopware-dev:latest
+  ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-full
+
+# Slim environment for CI/CD
+docker run -d \
+  --name shopware-slim \
+  -p 9000:9000 \
+  -v "./src:/var/www/html/custom/plugins/YourPlugin" \
+  ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-slim
 ```
 
-## 📋 Available Versions
+## 📋 Available Versions & Variants
 
-| Shopware Version | PHP Version | Tag                        | Status   |
-| ---------------- | ----------- | -------------------------- | -------- |
-| 6.7.1.0          | 8.4         | `latest`, `6.7.1.0`, `6.7` | ✅ Active |
-| 6.6.10.6         | 8.3         | `6.6.10.6`, `6.6`          | ✅ Active |
-| 6.5.8.18         | 8.2         | `6.5.8.18`, `6.5`          | ✅ Active |
+| Shopware | PHP | Full Tag                  | Slim Tag                  | Base Image   | Status   |
+| -------- | --- | ------------------------- | ------------------------- | ------------ | -------- |
+| 6.7.x    | 8.4 | `6.7-full`, `latest-full` | `6.7-slim`, `latest-slim` | Ubuntu 22.04 | ✅ Active |
+| 6.6.x    | 8.3 | `6.6-full`                | `6.6-slim`                | Ubuntu 22.04 | ✅ Active |
+| 6.5.x    | 8.2 | `6.5-full`                | `6.5-slim`                | Ubuntu 22.04 | ✅ Active |
+
+### Variant Differences
+
+**Full Variant (`-full`):**
+- Complete development environment
+- Apache + MySQL + Mailpit
+- Xdebug enabled by default
+- All development tools included
+- Demo data pre-installed
+
+**Slim Variant (`-slim`):**
+- Minimal production-ready environment
+- PHP-FPM only (no web server)
+- Optimized for CI/CD and containers
+- No development tools or demo data
+- Smaller image size (~60% reduction)
 
 ## 🛠️ What's Included
 
-### Development Tools
+### Full Variant Development Tools
 - **Xdebug 3** - Full debugging support with IDE integration
-- **Symfony Profiler** - Performance and debugging insights  
-- **MailHog** - Email testing and debugging
-- **Demo Data** - Pre-installed sample products and categories
-- **Hot Reload** - Automatic asset rebuilding during development
-- **Shopware CLI** - Official Shopware command-line interface
-- **NPM Scripts** - Complete development workflow scripts from Shopware core
-
-### Services
 - **Apache 2.4** - Web server with Shopware-optimized configuration
 - **MySQL 8** - Database server with Shopware-tuned settings
+- **Mailpit** - Email testing and debugging (modern MailHog alternative)
+- **Demo Data** - Pre-installed sample products and categories
+- **Shopware CLI** - Official Shopware command-line interface
+- **NPM Scripts** - Complete development workflow scripts
+
+### Common Tools (Both Variants)
 - **PHP-FPM** - High-performance PHP processor
-- **Node.js 22** - For building admin and storefront assets
+- **Node.js** - For building admin and storefront assets (22.x for 6.7, 20.x for 6.5/6.6)
 - **Composer 2** - Dependency management
+- **Supervisor** - Process management
+
+### Slim Variant Optimizations
+- Production-ready PHP configuration
+- Minimal system dependencies
+- Optimized autoloader
+- No development overhead
+- Perfect for containerized deployments
 
 ### Pre-configured for Development
-- `APP_ENV=dev` with all development features enabled
-- Optimized PHP settings (1GB memory limit, extended execution time)
+- `APP_ENV=dev` with all development features enabled (full variant)
+- `APP_ENV=prod` optimized for production (slim variant)
+- Optimized PHP settings (memory limits, execution time)
 - Proper file permissions for plugin development
-- Database and admin user automatically created
-- All Shopware dev dependencies installed
+- Database and admin user automatically created (full variant)
+- All necessary Shopware dependencies installed
+- Template-based installation from official Shopware production template
 - Shopware development scripts from core repository
 - Shopware CLI project configuration
 
 ## 🔧 Usage Examples
 
-### Basic Plugin Development
+### Full Development Environment
 ```yaml
 services:
   shopware:
-    image: ghcr.io/your-username/shopware-docker/shopware-dev:6.7.1.0
+    image: ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-full
     ports:
       - "80:80"
       - "3306:3306"
+      - "8025:8025"  # Mailpit
+      - "9003:9003"   # Xdebug
     volumes:
       - "./src:/var/www/html/custom/plugins/MyPlugin"
     environment:
       - XDEBUG_ENABLED=1
 ```
 
-### Multiple Plugins
+### Slim Production-like Environment
 ```yaml
 services:
   shopware:
-    image: ghcr.io/your-username/shopware-docker/shopware-dev:6.7.1.0
+    image: ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-slim
     ports:
-      - "80:80"
-      - "3306:3306"
+      - "9000:9000"  # PHP-FPM only
     volumes:
-      - "./plugins:/var/www/html/custom/plugins"
-      - "./themes:/var/www/html/custom/themes"
-```
-
-### With External Database
-```yaml
-services:
-  shopware:
-    image: ghcr.io/your-username/shopware-docker/shopware-dev:6.7.1.0
-    ports:
-      - "80:80"
+      - "./src:/var/www/html/custom/plugins/MyPlugin"
     environment:
+      - APP_ENV=prod
       - DATABASE_URL=mysql://shopware:shopware@mysql:3306/shopware
     depends_on:
       - mysql
@@ -99,19 +119,44 @@ services:
       MYSQL_DATABASE: shopware
       MYSQL_USER: shopware
       MYSQL_PASSWORD: shopware
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - "./nginx.conf:/etc/nginx/nginx.conf"
+    depends_on:
+      - shopware
+```
+
+### Multiple Plugins Development
+```yaml
+services:
+  shopware:
+    image: ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-full
+    ports:
+      - "80:80"
+      - "3306:3306"
+    volumes:
+      - "./plugins:/var/www/html/custom/plugins"
+      - "./themes:/var/www/html/custom/themes"
 ```
 
 ## 🌐 Access Points
 
-Once running, you can access:
-
+### Full Variant
 - **🏪 Shopware Frontend:** http://localhost
 - **⚙️ Shopware Admin:** http://localhost/admin
-- **📧 MailHog (Email testing):** http://localhost:8025
+- **📧 Mailpit (Email testing):** http://localhost:8025
 - **🗄️ Database:** localhost:3306
 - **🐛 Xdebug:** Port 9003
 
-### Default Credentials
+### Slim Variant
+- **🐘 PHP-FPM:** Port 9000 (requires web server)
+- **🐛 Health Check:** Available at `/ping` endpoint
+
+### Default Credentials (Full Variant)
 - **Admin Username:** `admin`
 - **Admin Password:** `shopware`
 - **Database User:** `shopware`
@@ -119,15 +164,14 @@ Once running, you can access:
 
 ## 🛠️ Development Workflow
 
-### NPM Scripts (from Shopware Core)
-The images include all development scripts from the official Shopware repository:
+### NPM Scripts (Full Variant)
+The full variant includes all development scripts from the official Shopware repository:
 
 ```bash
 # Admin development
 docker exec <container> npm run admin:build          # Build admin interface
 docker exec <container> npm run admin:watch          # Watch admin changes  
 docker exec <container> npm run admin:dev            # Development build
-docker exec <container> npm run admin:code-mods      # Run code modifications
 
 # Storefront development  
 docker exec <container> npm run storefront:build     # Build storefront
@@ -136,12 +180,11 @@ docker exec <container> npm run storefront:dev       # Development build
 
 # Combined workflows
 docker exec <container> npm run build:all           # Build everything
-docker exec <container> npm run watch:admin         # Alias for admin:watch
-docker exec <container> npm run watch:storefront    # Alias for storefront:watch
+docker exec <container> npm run watch               # Watch all changes
 ```
 
 ### Shopware CLI Commands
-Pre-installed and configured Shopware CLI for advanced workflows:
+Pre-installed and configured in both variants:
 
 ```bash
 # Project management
@@ -154,27 +197,34 @@ docker exec <container> shopware-cli extension zip            # Create extension
 docker exec <container> shopware-cli extension validate       # Validate extension
 docker exec <container> shopware-cli extension create         # Create new extension
 
-# Store operations
-docker exec <container> shopware-cli extension upload         # Upload to store
-docker exec <container> shopware-cli extension download       # Download from store
-
 # Development helpers
 docker exec <container> shopware-cli project generate-jwt     # Generate JWT keys
-docker exec <container> shopware-cli project ci              # CI/CD helpers
 ```
 
 ## 🔧 Environment Variables
 
-| Variable                               | Default                                             | Description                               |
-| -------------------------------------- | --------------------------------------------------- | ----------------------------------------- |
-| `XDEBUG_ENABLED`                       | `1`                                                 | Enable/disable Xdebug                     |
-| `APP_URL`                              | `http://localhost`                                  | Base URL for Shopware                     |
-| `DATABASE_URL`                         | `mysql://shopware:shopware@localhost:3306/shopware` | Database connection                       |
-| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD`     | `1`                                                 | Skip Chromium download for faster startup |
-| `SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS` | `1`                                                 | Only build admin extensions (faster)      |
-| `DISABLE_ADMIN_COMPILATION_TYPECHECK`  | `1`                                                 | Disable TypeScript checking (faster)      |
+### Common Variables (Both Variants)
+| Variable                           | Default                                             | Description                               |
+| ---------------------------------- | --------------------------------------------------- | ----------------------------------------- |
+| `APP_URL`                          | `http://localhost`                                  | Base URL for Shopware                     |
+| `DATABASE_URL`                     | `mysql://shopware:shopware@localhost:3306/shopware` | Database connection                       |
+| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD` | `1`                                                 | Skip Chromium download for faster startup |
 
-## 🐛 Debugging Setup
+### Full Variant Variables
+| Variable                               | Default | Description                          |
+| -------------------------------------- | ------- | ------------------------------------ |
+| `XDEBUG_ENABLED`                       | `1`     | Enable/disable Xdebug                |
+| `APP_ENV`                              | `dev`   | Shopware environment mode            |
+| `SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS` | `1`     | Only build admin extensions (faster) |
+| `DISABLE_ADMIN_COMPILATION_TYPECHECK`  | `1`     | Disable TypeScript checking (faster) |
+
+### Slim Variant Variables
+| Variable  | Default | Description               |
+| --------- | ------- | ------------------------- |
+| `APP_ENV` | `prod`  | Shopware environment mode |
+| `VARIANT` | `slim`  | Build variant identifier  |
+
+## 🐛 Debugging Setup (Full Variant Only)
 
 ### VS Code
 Add to your `.vscode/launch.json`:
@@ -201,41 +251,98 @@ Add to your `.vscode/launch.json`:
 
 ## 🏗️ Building Images
 
-### Build All Versions
+### Modern Build System
+This project uses Docker Buildx Bake for efficient multi-platform builds:
+
 ```bash
+# Build all versions and variants
+docker buildx bake
+
+# Build specific version
+docker buildx bake shopware-6-7-full
+docker buildx bake shopware-6-7-slim
+
+# Build for specific platform
+docker buildx bake --set shopware-6-7-full.platform=linux/amd64
+
+# Build and push to registry
+docker buildx bake --push
+```
+
+### Legacy Build Script
+For compatibility, the old build script is still available:
+
+```bash
+# Build all versions
 ./build.sh
+
+# Build specific version
+./build.sh 6.7
+
+# Build for specific platform  
+./build.sh 6.7 linux/amd64
 ```
 
-### Build Specific Version
-```bash
-./build.sh 6.7.1.0
-```
-
-### Build for Specific Platform
-```bash
-./build.sh 6.7.1.0 linux/amd64
-```
+### Build Matrix
+The build system automatically generates builds for:
+- **Platforms:** `linux/amd64`, `linux/arm64`
+- **Variants:** `full` (complete), `slim` (minimal)
+- **Versions:** 6.5, 6.6, 6.7 with appropriate PHP versions
 
 ## 📁 Project Structure
 
 ```
 shopware-docker/
-├── 6.5/
-│   └── Dockerfile
-├── 6.6/
-│   └── Dockerfile  
-├── 6.7/
-│   └── Dockerfile
-├── .github/workflows/
-│   └── build.yml
-├── apache-shopware.conf
-├── .env.dev
-├── supervisord.conf
-├── start.sh
-├── build.sh
-├── docker-compose.yml
-└── README.md
+├── 6.5/                          # Shopware 6.5 specific files
+│   ├── Dockerfile                # Full variant Dockerfile
+│   ├── apache-shopware.conf      # Apache configuration
+│   ├── start.sh                  # Container startup script
+│   ├── supervisord.conf          # Process management
+│   └── .env.dev                  # Development environment
+├── 6.6/                          # Shopware 6.6 specific files
+│   └── [same structure as 6.5]
+├── 6.7/                          # Shopware 6.7 specific files  
+│   └── [same structure as 6.5]
+├── templates/                    # Template files for multi-stage builds
+│   ├── Dockerfile.base           # Base template for full variant
+│   ├── Dockerfile.slim           # Slim variant template
+│   ├── start-slim.sh             # Slim variant startup script
+│   └── supervisord-slim.conf     # Slim variant process management
+├── scripts/                      # Build automation scripts
+│   ├── generate-matrix.mjs       # Version matrix generator
+│   └── health-check.sh           # Container health check
+├── .github/workflows/            # CI/CD pipelines
+│   └── build.yml                 # Automated builds and publishing
+├── docker-bake.hcl               # Modern build configuration
+├── build.sh                      # Legacy build script
+├── setup.sh                      # Development environment setup
+├── Makefile                      # Development shortcuts
+├── README.md                     # This file
+├── Troubleshooting.md            # Problem solving guide
+└── BUILD_IMPROVEMENTS.md         # Development notes
 ```
+
+### File Purposes
+
+**Version Directories (6.5/, 6.6/, 6.7/):**
+- Full variant Dockerfiles with complete development environment
+- Apache configuration optimized for Shopware
+- Startup scripts with service orchestration
+- Environment configurations
+
+**Templates Directory:**
+- `Dockerfile.base`: Multi-stage template for generating full variant builds
+- `Dockerfile.slim`: Production-optimized minimal variant
+- Shared configuration files for slim builds
+
+**Scripts Directory:**
+- `generate-matrix.mjs`: Generates build matrix for CI/CD
+- `health-check.sh`: Container health verification
+
+**Build System:**
+- `docker-bake.hcl`: Modern declarative build configuration
+- `build.sh`: Legacy shell-based build script for compatibility
+- `.github/workflows/`: Automated CI/CD with GitHub Actions
 
 ## 🔄 Differences from Dockware
 

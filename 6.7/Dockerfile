@@ -111,13 +111,13 @@ WORKDIR /var/www/html
 
 # Create Shopware project using official template (simplified approach)
 RUN echo "Cleaning working directory..." \
-    && rm -rf ./* .[!.]* 2>/dev/null || true \
-    && echo "Creating Shopware project from official template..." \
-    && COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production:~6.7.0 . --no-interaction --prefer-dist --ignore-platform-reqs \
-    && echo "Setting up environment configuration..." \
-    && echo "APP_ENV=dev" > .env.local \
-    && echo "DATABASE_URL=mysql://shopware:shopware@localhost:3306/shopware" >> .env.local \
-    && echo "APP_URL=http://localhost" >> .env.local
+	&& rm -rf ./* .[!.]* 2>/dev/null || true \
+	&& echo "Creating Shopware project from official template..." \
+	&& COMPOSER_MEMORY_LIMIT=-1 composer create-project shopware/production:~6.7.0 . --no-interaction --prefer-dist --ignore-platform-reqs \
+	&& echo "Setting up environment configuration..." \
+	&& echo "APP_ENV=dev" > .env.local \
+	&& echo "DATABASE_URL=mysql://shopware:shopware@localhost:3306/shopware" >> .env.local \
+	&& echo "APP_URL=http://localhost" >> .env.local
 
 # Create required directories and set permissions
 RUN mkdir -p var/cache var/log var/sessions \
@@ -140,9 +140,20 @@ COPY start.sh /usr/local/bin/start.sh
 # Make start script executable
 RUN chmod +x /usr/local/bin/start.sh
 
-# Install MailHog for email testing
-RUN wget -O /usr/local/bin/mailhog https://github.com/mailhog/MailHog/releases/download/v1.0.1/MailHog_linux_amd64 \
-	&& chmod +x /usr/local/bin/mailhog
+# Install Mailpit for email testing (modern MailHog alternative with ARM64 support)
+RUN ARCH=$(dpkg --print-architecture) \
+	&& case "$ARCH" in \
+	amd64) MAILPIT_ARCH="amd64" ;; \
+	arm64) MAILPIT_ARCH="arm64" ;; \
+	arm*) MAILPIT_ARCH="arm" ;; \
+	i386) MAILPIT_ARCH="386" ;; \
+	*) MAILPIT_ARCH="amd64" ;; \
+	esac \
+	&& MAILPIT_VERSION="v1.27.3" \
+	&& wget -O mailpit.tar.gz "https://github.com/axllent/mailpit/releases/download/${MAILPIT_VERSION}/mailpit-linux-${MAILPIT_ARCH}.tar.gz" \
+	&& tar -xzf mailpit.tar.gz -C /usr/local/bin/ \
+	&& rm mailpit.tar.gz \
+	&& chmod +x /usr/local/bin/mailpit
 
 # Expose ports
 EXPOSE 80 443 3306 8025 9003

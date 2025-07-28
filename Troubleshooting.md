@@ -11,21 +11,28 @@
 # Check container logs
 docker logs <container-name>
 
-# Check if ports are already in use
+# For full variant - check if ports are already in use
 sudo netstat -tlnp | grep :80
 sudo netstat -tlnp | grep :3306
 
+# For slim variant - check PHP-FPM port
+sudo netstat -tlnp | grep :9000
+
 # Try running with different ports
-docker run -p 8080:80 -p 3307:3306 your-registry/shopware-dev:latest
+# Full variant:
+docker run -p 8080:80 -p 3307:3306 ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-full
+
+# Slim variant:
+docker run -p 9001:9000 ghcr.io/weblabels/shopware-docker/shopware-dev:6.7-slim
 ```
 
-### Database Connection Issues
+### Database Connection Issues (Full Variant)
 
 **Problem:** "Connection refused" or "Access denied" errors
 
 **Solutions:**
 ```bash
-# Wait for MySQL to be ready (takes 30-60 seconds)
+# Wait for MySQL to be ready (takes 30-60 seconds on first start)
 docker exec -it <container-name> mysqladmin ping -h localhost
 
 # Check MySQL status
@@ -36,7 +43,26 @@ docker exec -it <container-name> mysql -e "DROP DATABASE IF EXISTS shopware; CRE
 docker exec -it <container-name> bin/console system:install --create-database --basic-setup --force
 ```
 
-### Xdebug Not Working
+### Slim Variant with External Database
+
+**Problem:** Database connection issues when using external database
+
+**Solutions:**
+```bash
+# Check database connectivity from slim container
+docker exec -it <container-name> php -r "
+$pdo = new PDO('mysql:host=your-db-host:3306;dbname=shopware', 'user', 'pass');
+echo 'Connection successful';
+"
+
+# Verify environment variables
+docker exec -it <container-name> env | grep DATABASE_URL
+
+# Check if database exists and is accessible
+docker exec -it <container-name> mysql -h your-db-host -u shopware -p shopware -e "SHOW TABLES;"
+```
+
+### Xdebug Not Working (Full Variant Only)
 
 **Problem:** IDE doesn't receive debug connections
 
@@ -50,14 +76,18 @@ docker exec -it <container-name> php -i | grep xdebug
 
 # Test Xdebug connection
 docker exec -it <container-name> bash -c 'echo "<?php xdebug_info();" | php'
+
+# Check if Xdebug can connect to host
+docker exec -it <container-name> nc -zv host.docker.internal 9003
 ```
 
-**IDE Configuration:**
-- **Host:** `localhost` or `127.0.0.1`
-- **Port:** `9003`
-- **Path mapping:** `{project-root}` → `/var/www/html`
+**Common Xdebug Issues:**
+- **Docker Desktop:** Ensure "Use host networking" is disabled
+- **Linux:** Use `172.17.0.1` instead of `host.docker.internal`
+- **Firewall:** Allow connections on port 9003
+- **IDE:** Set path mapping `{project-root}` → `/var/www/html`
 
-### Admin Won't Load
+### Admin Won't Load (Full Variant)
 
 **Problem:** Admin panel shows errors or won't load
 
@@ -72,6 +102,28 @@ docker exec -it <container-name> bin/console cache:clear
 
 # Check admin build
 docker exec -it <container-name> ./bin/build-administration.sh
+
+# For development mode, try building in development
+docker exec -it <container-name> npm run admin:dev
+```
+
+### PHP-FPM Issues (Slim Variant)
+
+**Problem:** PHP-FPM not responding or 502 Gateway errors
+
+**Solutions:**
+```bash
+# Check PHP-FPM status
+docker exec -it <container-name> supervisorctl status
+
+# Test PHP-FPM ping endpoint
+docker exec -it <container-name> curl -f http://localhost:9000/ping
+
+# Check PHP-FPM logs
+docker exec -it <container-name> tail -f /var/log/php8.x-fpm.log
+
+# Restart PHP-FPM
+docker exec -it <container-name> supervisorctl restart php-fpm
 ```
 
 ### Plugin Development Issues
@@ -95,9 +147,131 @@ docker exec -it <container-name> bin/console cache:clear
 **Problem:** Slow loading times or high memory usage
 
 **Solutions:**
+
+**For Full Variant:**
 ```bash
 # Increase container resources in Docker Desktop
 # Or use these optimizations:
+### Variant-Specific Issues
+
+#### Full Variant Troubleshooting
+
+**Mailpit Not Accessible:**
+```bash
+# Check if Mailpit is running
+docker exec -it <container-name> supervisorctl status mailpit
+
+# Test Mailpit port
+curl -f http://localhost:8025
+
+# Restart Mailpit
+docker exec -it <container-name> supervisorctl restart mailpit
+```
+
+**Apache Configuration Issues:**
+```bash
+# Check Apache status
+docker exec -it <container-name> service apache2 status
+
+# Test Apache configuration
+docker exec -it <container-name> apache2ctl configtest
+
+# View Apache error logs
+docker exec -it <container-name> tail -f /var/log/apache2/error.log
+```
+
+#### Slim Variant Troubleshooting
+
+**Missing Web Server:**
+```bash
+# Slim variant requires external web server
+# Example nginx configuration for Docker Compose:
+```
+
+```nginx
+server {
+    listen 80;
+    root /var/www/html/public;
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ /index.php$is_args$args;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass shopware:9000;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+}
+```
+
+**Autoloader Issues:**
+```bash
+# Regenerate optimized autoloader
+docker exec -it <container-name> composer dump-autoload --optimize --no-dev
+
+# Check autoloader files
+docker exec -it <container-name> ls -la vendor/composer/
+```
+```
+
+**For Slim Variant:**
+```bash
+# Use slim variant with external services for better performance
+# Enable OPcache optimization
+docker exec -it <container-name> php -i | grep opcache
+
+# Check memory usage
+docker exec -it <container-name> php -r "echo ini_get('memory_limit');"
+```
+
+## Docker Buildx Bake Issues
+
+**Problem:** `docker buildx bake` command not found
+
+**Solution:**
+```bash
+# Install Docker Buildx (if not already installed)
+docker buildx version
+
+# Enable experimental features in Docker config
+echo '{"experimental": true}' > ~/.docker/config.json
+
+# Use legacy build script as fallback
+./build.sh
+```
+
+**Problem:** Multi-platform build fails
+
+**Solution:**
+```bash
+# Create and use buildx builder
+docker buildx create --name shopware-builder --use
+
+# Build for single platform first
+docker buildx bake shopware-6-7-full --set shopware-6-7-full.platform=linux/amd64
+
+# Check available platforms
+docker buildx ls
+```
+
+**Problem:** Build context too large
+
+**Solution:**
+```bash
+# Check .dockerignore file exists
+cat .dockerignore
+
+# Add common patterns to .dockerignore:
+echo ".git
+node_modules
+*.log
+.DS_Store" >> .dockerignore
+
+# Use build context from git (if using git)
+docker buildx bake --file docker-bake.hcl --set *.context=.
+```
 
 # Disable Xdebug when not debugging
 docker run -e XDEBUG_ENABLED=0 your-registry/shopware-dev:latest
@@ -269,6 +443,82 @@ When reporting issues, please include:
 4. **Error Messages:**
    - Full error messages from logs
    - Screenshots if applicable
+
+## Version-Specific Issues
+
+### Shopware 6.7 with PHP 8.4
+**Problem:** PHP 8.4 compatibility issues
+
+**Solutions:**
+```bash
+# Check PHP version
+docker exec -it <container-name> php -v
+
+# For PHP 8.4 specific issues, check:
+docker exec -it <container-name> php -m | grep -E "(sodium|opcache|apcu)"
+
+# Node.js version for 6.7 (should be 22.x)
+docker exec -it <container-name> node --version
+```
+
+### Shopware 6.6 with PHP 8.3
+**Problem:** Legacy compatibility issues
+
+**Solutions:**
+```bash
+# Check for deprecated warnings
+docker exec -it <container-name> tail -f var/log/dev.log | grep DEPRECATION
+
+# Update composer dependencies
+docker exec -it <container-name> composer update --with-all-dependencies
+```
+
+### Shopware 6.5 with PHP 8.2
+**Problem:** Older dependencies or compatibility
+
+**Solutions:**
+```bash
+# Check for Symfony compatibility
+docker exec -it <container-name> composer show symfony/framework-bundle
+
+# Node.js version for 6.5/6.6 (should be 20.x)
+docker exec -it <container-name> node --version
+```
+
+## CI/CD Specific Issues
+
+### GitHub Actions Build Failures
+**Problem:** Builds fail in CI/CD pipeline
+
+**Solutions:**
+```bash
+# Check GitHub Actions logs for specific errors
+# Common issues:
+
+# 1. Insufficient disk space
+df -h
+
+# 2. Rate limiting (use GitHub token)
+echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+# 3. Multi-platform build issues (use single platform for testing)
+docker buildx bake --set *.platform=linux/amd64
+```
+
+### Registry Push Issues
+**Problem:** Cannot push to GitHub Container Registry
+
+**Solutions:**
+```bash
+# Check authentication
+docker login ghcr.io
+
+# Verify permissions
+# Repository settings > Actions > General > Workflow permissions
+
+# Manual push test
+docker push ghcr.io/weblabels/shopware-docker/shopware-dev:test
+```
 
 ### Community Support
 - **GitHub Issues:** For bugs and feature requests

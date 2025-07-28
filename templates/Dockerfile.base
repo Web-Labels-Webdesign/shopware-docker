@@ -90,19 +90,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Configure PHP for production with development overrides
 RUN { \
-        echo 'memory_limit = 512M'; \
-        echo 'max_execution_time = 300'; \
-        echo 'upload_max_filesize = 32M'; \
-        echo 'post_max_size = 32M'; \
-        echo 'allow_url_fopen = On'; \
-        echo 'opcache.enable = 1'; \
-        echo 'opcache.memory_consumption = 256'; \
-        echo 'opcache.interned_strings_buffer = 16'; \
-        echo 'opcache.max_accelerated_files = 20000'; \
-        echo 'opcache.validate_timestamps = 1'; \
-        echo 'opcache.revalidate_freq = 2'; \
-        echo 'apcu.enabled = 1'; \
-        echo 'apcu.shm_size = 128M'; \
+    echo 'memory_limit = 512M'; \
+    echo 'max_execution_time = 300'; \
+    echo 'upload_max_filesize = 32M'; \
+    echo 'post_max_size = 32M'; \
+    echo 'allow_url_fopen = On'; \
+    echo 'opcache.enable = 1'; \
+    echo 'opcache.memory_consumption = 256'; \
+    echo 'opcache.interned_strings_buffer = 16'; \
+    echo 'opcache.max_accelerated_files = 20000'; \
+    echo 'opcache.validate_timestamps = 1'; \
+    echo 'opcache.revalidate_freq = 2'; \
+    echo 'apcu.enabled = 1'; \
+    echo 'apcu.shm_size = 128M'; \
     } > /etc/php/${PHP_VERSION}/fpm/conf.d/99-shopware.ini \
     && cp /etc/php/${PHP_VERSION}/fpm/conf.d/99-shopware.ini /etc/php/${PHP_VERSION}/cli/conf.d/99-shopware.ini \
     # CLI specific settings
@@ -117,9 +117,9 @@ FROM php-base AS node-base
 # Install Node.js with architecture detection
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in \
-        amd64) NODE_ARCH="x64" ;; \
-        arm64) NODE_ARCH="arm64" ;; \
-        *) NODE_ARCH="x64" ;; \
+    amd64) NODE_ARCH="x64" ;; \
+    arm64) NODE_ARCH="arm64" ;; \
+    *) NODE_ARCH="x64" ;; \
     esac \
     && NODE_VERSION=$([ "${SHOPWARE_VERSION%.*}" = "6.7" ] && echo "22.11.0" || echo "20.18.0") \
     && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" -o node.tar.xz \
@@ -155,52 +155,52 @@ FROM dev-tools AS web-server
 
 # Install web server and database for full variant
 RUN if [ "$VARIANT" = "full" ]; then \
-        apt-get update && apt-get install -y --no-install-recommends \
-            # Web server
-            apache2 \
-            # Database
-            mysql-server \
-            mysql-client \
-            # Process management
-            supervisor \
-            # Development tools
-            vim \
-            nano \
-            htop \
-            # Development PHP extensions
-            php${PHP_VERSION}-dev \
-            php${PHP_VERSION}-xdebug \
-        && rm -rf /var/lib/apt/lists/* \
-        && apt-get clean; \
+    apt-get update && apt-get install -y --no-install-recommends \
+    # Web server
+    apache2 \
+    # Database
+    mysql-server \
+    mysql-client \
+    # Process management
+    supervisor \
+    # Development tools
+    vim \
+    nano \
+    htop \
+    # Development PHP extensions
+    php${PHP_VERSION}-dev \
+    php${PHP_VERSION}-xdebug \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean; \
     fi
 
 # Configure Apache (full variant only)
 RUN if [ "$VARIANT" = "full" ]; then \
-        a2enmod rewrite headers ssl; \
+    a2enmod rewrite headers ssl; \
     fi
 
 # Configure MySQL (full variant only) 
 RUN if [ "$VARIANT" = "full" ]; then \
-        { \
-            echo "sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'"; \
-            echo "max_allowed_packet = 128M"; \
-            echo "innodb_buffer_pool_size = 512M"; \
-            echo "innodb_log_file_size = 256M"; \
-            echo "innodb_flush_log_at_trx_commit = 2"; \
-            echo "innodb_flush_method = O_DIRECT"; \
-        } >> /etc/mysql/mysql.conf.d/shopware.cnf; \
+    { \
+    echo "sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'"; \
+    echo "max_allowed_packet = 128M"; \
+    echo "innodb_buffer_pool_size = 512M"; \
+    echo "innodb_log_file_size = 256M"; \
+    echo "innodb_flush_log_at_trx_commit = 2"; \
+    echo "innodb_flush_method = O_DIRECT"; \
+    } >> /etc/mysql/mysql.conf.d/shopware.cnf; \
     fi
 
 # Configure Xdebug for development (full variant only)
 RUN if [ "$VARIANT" = "full" ] && [ -f "/etc/php/${PHP_VERSION}/mods-available/xdebug.ini" ]; then \
-        { \
-            echo "xdebug.mode = debug,coverage,develop"; \
-            echo "xdebug.start_with_request = trigger"; \
-            echo "xdebug.client_host = host.docker.internal"; \
-            echo "xdebug.client_port = 9003"; \
-            echo "xdebug.log = /tmp/xdebug.log"; \
-            echo "xdebug.log_level = 0"; \
-        } >> /etc/php/${PHP_VERSION}/mods-available/xdebug.ini; \
+    { \
+    echo "xdebug.mode = debug,coverage,develop"; \
+    echo "xdebug.start_with_request = trigger"; \
+    echo "xdebug.client_host = host.docker.internal"; \
+    echo "xdebug.client_port = 9003"; \
+    echo "xdebug.log = /tmp/xdebug.log"; \
+    echo "xdebug.log_level = 0"; \
+    } >> /etc/php/${PHP_VERSION}/mods-available/xdebug.ini; \
     fi
 
 #
@@ -223,16 +223,16 @@ RUN MAJOR_MINOR=$(echo "$SHOPWARE_VERSION" | cut -d. -f1-2) \
     && echo "Creating Shopware project from official template..." \
     && cd /tmp \
     && if [ "$VARIANT" = "slim" ]; then \
-        COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" shopware-project \
-            --no-interaction \
-            --prefer-dist \
-            --ignore-platform-reqs \
-            --no-dev; \
+    COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" shopware-project \
+    --no-interaction \
+    --prefer-dist \
+    --ignore-platform-reqs \
+    --no-dev; \
     else \
-        COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" shopware-project \
-            --no-interaction \
-            --prefer-dist \
-            --ignore-platform-reqs; \
+    COMPOSER_MEMORY_LIMIT=-1 composer create-project "shopware/production:~${MAJOR_MINOR}.0" shopware-project \
+    --no-interaction \
+    --prefer-dist \
+    --ignore-platform-reqs; \
     fi \
     && echo "Moving project files to application directory..." \
     && cd /var/www/html \
@@ -275,16 +275,21 @@ RUN chmod +x /usr/local/bin/start.sh \
 #
 FROM application AS runtime
 
-# Install MailHog for email testing (full variant only)
+# Install Mailpit for email testing (full variant only) - modern MailHog alternative with ARM64 support
 RUN if [ "$VARIANT" = "full" ]; then \
-        ARCH=$(dpkg --print-architecture) \
-        && case "$ARCH" in \
-            amd64) MAILHOG_ARCH="amd64" ;; \
-            arm64) MAILHOG_ARCH="arm64" ;; \
-            *) MAILHOG_ARCH="amd64" ;; \
-        esac \
-        && wget -O /usr/local/bin/mailhog "https://github.com/mailhog/MailHog/releases/download/v1.0.1/MailHog_linux_${MAILHOG_ARCH}" \
-        && chmod +x /usr/local/bin/mailhog; \
+    ARCH=$(dpkg --print-architecture) \
+    && case "$ARCH" in \
+    amd64) MAILPIT_ARCH="amd64" ;; \
+    arm64) MAILPIT_ARCH="arm64" ;; \
+    arm*) MAILPIT_ARCH="arm" ;; \
+    i386) MAILPIT_ARCH="386" ;; \
+    *) MAILPIT_ARCH="amd64" ;; \
+    esac \
+    && MAILPIT_VERSION="v1.27.3" \
+    && wget -O mailpit.tar.gz "https://github.com/axllent/mailpit/releases/download/${MAILPIT_VERSION}/mailpit-linux-${MAILPIT_ARCH}.tar.gz" \
+    && tar -xzf mailpit.tar.gz -C /usr/local/bin/ \
+    && rm mailpit.tar.gz \
+    && chmod +x /usr/local/bin/mailpit; \
     fi
 
 # Expose ports
@@ -293,8 +298,8 @@ EXPOSE 80 443 3306 8025 9003
 # Health check with better error handling
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD curl -f http://localhost/api/_info/version || \
-        curl -f http://localhost/health.php || \
-        exit 1
+    curl -f http://localhost/health.php || \
+    exit 1
 
 # Use non-root user for runtime
 USER shopware

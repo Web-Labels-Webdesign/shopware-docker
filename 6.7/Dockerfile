@@ -60,7 +60,9 @@ RUN apt-get install -y \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 22 (required for Shopware 6.7 development)
-RUN curl -fsSL https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-x64.tar.xz -o node.tar.xz \
+RUN ARCH=$(dpkg --print-architecture) \
+	&& if [ "$ARCH" = "amd64" ]; then NODE_ARCH="x64"; elif [ "$ARCH" = "arm64" ]; then NODE_ARCH="arm64"; else NODE_ARCH="x64"; fi \
+	&& curl -fsSL https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-${NODE_ARCH}.tar.xz -o node.tar.xz \
 	&& tar -xJf node.tar.xz -C /usr/local --strip-components=1 \
 	&& rm node.tar.xz \
 	&& npm install -g npm@latest
@@ -108,7 +110,9 @@ RUN mkdir -p /var/www/html && chown -R www-data:www-data /var/www/html
 WORKDIR /var/www/html
 
 # Clone Shopware development repository
-RUN echo "Cloning Shopware development repository..." \
+RUN echo "Cleaning working directory..." \
+    && rm -rf ./* .[!.]* 2>/dev/null || true \
+    && echo "Cloning Shopware development repository..." \
 	&& git clone --depth 1 --branch v${SHOPWARE_VERSION} https://github.com/shopware/shopware.git . 2>/dev/null || \
 	   git clone --depth 1 --branch 6.7.1.0 https://github.com/shopware/shopware.git . 2>/dev/null || \
 	   git clone --depth 1 https://github.com/shopware/shopware.git . \

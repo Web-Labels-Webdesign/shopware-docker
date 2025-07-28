@@ -60,7 +60,9 @@ RUN apt-get install -y \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 (required for Shopware 6.6)  
-RUN curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz -o node.tar.xz \
+RUN ARCH=$(dpkg --print-architecture) \
+	&& if [ "$ARCH" = "amd64" ]; then NODE_ARCH="x64"; elif [ "$ARCH" = "arm64" ]; then NODE_ARCH="arm64"; else NODE_ARCH="x64"; fi \
+	&& curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-${NODE_ARCH}.tar.xz -o node.tar.xz \
 	&& tar -xJf node.tar.xz -C /usr/local --strip-components=1 \
 	&& rm node.tar.xz \
 	&& npm install -g npm@latest

@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 PROJECT_NAME=${1:-"shopware-project"}
 SHOPWARE_VERSION=${2:-"6.7.1.0"}
 VARIANT=${3:-"full"}
-REGISTRY="ghcr.io/weblabels/shopware-docker/shopware-dev"
+REGISTRY="ghcr.io/web-labels-webdesign/shopware-docker/shopware-dev"
 
 # Available versions with PHP compatibility
 declare -A VERSIONS=(

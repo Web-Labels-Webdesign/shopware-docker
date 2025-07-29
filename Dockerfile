@@ -291,8 +291,8 @@ RUN echo "Initializing MySQL for build-time installation..." \
     && su -s /bin/bash -c "php bin/console framework:demodata --products=20 --categories=5 --media=10" shopware \
     # Install and build assets if package.json exists
     && if [ -f package.json ]; then \
-        su -s /bin/bash -c "npm install --no-audit --no-fund" shopware && \
-        su -s /bin/bash -c "npm run build:all" shopware; \
+    su -s /bin/bash -c "npm install --no-audit --no-fund" shopware && \
+    su -s /bin/bash -c "npm run build:all" shopware; \
     fi \
     && su -s /bin/bash -c "php bin/console cache:clear" shopware \
     # Create comprehensive install lock with installation metadata

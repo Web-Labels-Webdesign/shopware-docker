@@ -273,7 +273,7 @@ fi
 # Create Shopware database and user if they don't exist
 echo "🔧 Setting up Shopware database..."
 mysql -u root <<EOF
-CREATE DATABASE IF NOT EXISTS shopware;
+CREATE DATABASE IF NOT EXISTS shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS 'shopware'@'localhost' IDENTIFIED BY 'shopware';
 GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost';
 FLUSH PRIVILEGES;
@@ -378,15 +378,37 @@ if [ ! -f install.lock ]; then
     
     # Test database connection before installation
     echo "🔍 Testing database connection before installation..."
-    if ! su -c "php bin/console dbal:run-sql 'SELECT 1'" shopware >/dev/null 2>&1; then
-        echo "❌ Cannot connect to database. Check DATABASE_URL in .env"
-        echo "Current DATABASE_URL: $(grep DATABASE_URL .env.local || echo 'Not found')"
-        exit 1
+    
+    # First test basic MySQL connection
+    if ! mysql -u shopware -pshopware -e "SELECT 1;" shopware >/dev/null 2>&1; then
+        echo "❌ Cannot connect to MySQL database with shopware user"
+        echo "Trying to fix database setup..."
+        
+        # Recreate database and user
+        mysql -u root <<EOF
+DROP DATABASE IF EXISTS shopware;
+CREATE DATABASE shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+DROP USER IF EXISTS 'shopware'@'localhost';
+CREATE USER 'shopware'@'localhost' IDENTIFIED BY 'shopware';
+GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+        
+        # Test again
+        if ! mysql -u shopware -pshopware -e "SELECT 1;" shopware >/dev/null 2>&1; then
+            echo "❌ Still cannot connect to database after recreation"
+            echo "Current DATABASE_URL: $(grep DATABASE_URL .env.local || echo 'Not found')"
+            exit 1
+        else
+            echo "✅ Database connection fixed"
+        fi
+    else
+        echo "✅ Database connection successful"
     fi
     
     # Install Shopware
     echo "📦 Installing Shopware system..."
-    if ! su -c "php bin/console system:install --create-database --basic-setup --force" shopware; then
+    if ! su -c "php bin/console system:install --basic-setup --force" shopware; then
         echo "❌ Shopware installation failed"
         echo "Check the error above and database connection"
         exit 1

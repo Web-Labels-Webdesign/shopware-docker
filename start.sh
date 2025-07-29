@@ -433,16 +433,22 @@ EOF
     fi
     
     # Create admin user
+    echo "👤 Creating admin user..."
     su -c "php bin/console user:create admin --admin --email=\"admin@example.com\" --firstName=\"Shop\" --lastName=\"Admin\" --password=\"shopware\"" shopware || echo "Admin user might already exist"
     
     # Generate JWT keypair
+    echo "🔐 Generating JWT keypair..."
     su -c "php bin/console system:generate-jwt-secret --force" shopware
+    
+    # Install demo data (optional - can be skipped for faster startup)
+    echo "📊 Installing demo data..."
+    su -c "php bin/console framework:demodata --products=20 --categories=5 --media=10" shopware || echo "Demo data installation failed - continuing anyway"
     
     # Install and build assets
     if [ -f package.json ]; then
         echo "📦 Installing and building assets..."
         su -c "npm install --no-audit --no-fund" shopware
-        su -c "npm run build:all" shopware
+        su -c "npm run build:all" shopware || echo "Asset build failed - continuing anyway"
     fi
     
     # Create install lock

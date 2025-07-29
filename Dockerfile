@@ -252,66 +252,6 @@ RUN JWT_PASSPHRASE=$(openssl rand -base64 32) \
     && echo "INSTANCE_ID=${INSTANCE_ID}" >> .env.local \
     && echo "MAILER_URL=smtp://localhost:1025" >> .env.local
 
-# Switch back to root for MySQL operations
-USER root
-
-# Install Shopware during build (requires temporary MySQL)
-RUN echo "Installing Shopware during build process..." \
-    # Apply MySQL 8.0 configuration fixes
-    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/,NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true \
-    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER,//g' {} \; 2>/dev/null || true \
-    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true \
-    # Create clean MySQL 8.0 configuration
-    && echo '[mysqld]' > /etc/mysql/my.cnf \
-    && echo 'user = mysql' >> /etc/mysql/my.cnf \
-    && echo 'bind-address = 127.0.0.1' >> /etc/mysql/my.cnf \
-    && echo 'port = 3306' >> /etc/mysql/my.cnf \
-    && echo 'datadir = /var/lib/mysql' >> /etc/mysql/my.cnf \
-    && echo 'socket = /var/run/mysqld/mysqld.sock' >> /etc/mysql/my.cnf \
-    && echo 'pid-file = /var/run/mysqld/mysqld.pid' >> /etc/mysql/my.cnf \
-    && echo 'log-error = /var/log/mysql/error.log' >> /etc/mysql/my.cnf \
-    && echo 'sql_mode = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' >> /etc/mysql/my.cnf \
-    && echo 'tls-version = ""' >> /etc/mysql/my.cnf \
-    && echo 'default-authentication-plugin = mysql_native_password' >> /etc/mysql/my.cnf \
-    && echo 'character-set-server = utf8mb4' >> /etc/mysql/my.cnf \
-    && echo 'collation-server = utf8mb4_unicode_ci' >> /etc/mysql/my.cnf \
-    # Ensure directories exist
-    && mkdir -p /var/run/mysqld /var/log/mysql /var/lib/mysql \
-    && chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql \
-    && chmod 755 /var/run/mysqld \
-    # Start MySQL service
-    && service mysql start \
-    && sleep 10 \
-    # Wait for MySQL to be ready
-    && timeout 60 bash -c 'until mysqladmin ping -h localhost --silent; do echo "Waiting for MySQL..."; sleep 2; done' \
-    # Create database and user
-    && mysql -u root -e "CREATE DATABASE shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
-    && mysql -u root -e "CREATE USER 'shopware'@'localhost' IDENTIFIED BY 'shopware';" \
-    && mysql -u root -e "GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost';" \
-    && mysql -u root -e "FLUSH PRIVILEGES;" \
-    # Switch to shopware user for application commands
-    && cd /var/www/html \
-    && chown -R shopware:shopware /var/www/html \
-    # Install Shopware
-    && su -c "php bin/console system:install --basic-setup --force" shopware \
-    # Create admin user
-    && su -c "php bin/console user:create admin --admin --email=\"admin@example.com\" --firstName=\"Shop\" --lastName=\"Admin\" --password=\"shopware\"" shopware \
-    # Install demo data
-    && su -c "php bin/console framework:demodata --products=50 --categories=10 --media=20" shopware \
-    # Clear cache
-    && su -c "php bin/console cache:clear" shopware \
-    # Create install lock
-    && touch install.lock \
-    && chown shopware:shopware install.lock \
-    # Stop MySQL
-    && service mysql stop \
-    # Clean up temporary files but keep database data
-    && rm -rf var/cache/dev/* var/log/* \
-    && echo "Shopware installation completed during build"
-
-# Switch back to shopware user
-USER shopware
-
 # Switch back to root for system configuration
 USER root
 

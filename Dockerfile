@@ -252,8 +252,59 @@ RUN JWT_PASSPHRASE=$(openssl rand -base64 32) \
     && echo "INSTANCE_ID=${INSTANCE_ID}" >> .env.local \
     && echo "MAILER_URL=smtp://localhost:1025" >> .env.local
 
-# Switch back to root for system configuration
+# Switch back to root for build-time installation
 USER root
+
+# Initialize MySQL data directory during build
+RUN echo "Initializing MySQL for build-time installation..." \
+    # Initialize MySQL data directory
+    && mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql \
+    # Fix any configuration issues
+    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/,NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true \
+    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER,//g' {} \; 2>/dev/null || true \
+    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true \
+    # Create override configuration
+    && mkdir -p /etc/mysql/conf.d \
+    && echo '[mysqld]' > /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'sql_mode=STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' >> /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'tls-version=' >> /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'default-authentication-plugin=mysql_native_password' >> /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'skip-networking' >> /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'bind-address=127.0.0.1' >> /etc/mysql/conf.d/shopware-build.cnf \
+    && chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql
+
+# Install Shopware during build using mysqld_safe
+RUN echo "Installing Shopware during Docker build..." \
+    && cd /var/www/html \
+    # Start MySQL in safe mode for build
+    && mysqld_safe --user=mysql --skip-grant-tables --skip-networking & \
+    && sleep 10 \
+    # Wait for MySQL to be ready
+    && timeout 60 bash -c 'until mysqladmin ping -h localhost --silent 2>/dev/null; do echo "Waiting for MySQL..."; sleep 2; done' \
+    # Setup database and user
+    && mysql -u root <<'EOSQL'
+CREATE DATABASE IF NOT EXISTS shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'shopware'@'localhost' IDENTIFIED BY 'shopware';
+GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost';
+FLUSH PRIVILEGES;
+EOSQL
+\
+    # Switch to shopware user and install
+    && chown -R shopware:shopware /var/www/html \
+    && su -s /bin/bash -c "php bin/console system:install --basic-setup --force" shopware \
+    && su -s /bin/bash -c "php bin/console user:create admin --admin --email='admin@localhost' --firstName='Admin' --lastName='User' --password='shopware'" shopware \
+    && su -s /bin/bash -c "php bin/console framework:demodata --products=20 --categories=5 --media=10" shopware \
+    && su -s /bin/bash -c "php bin/console cache:clear" shopware \
+    # Create install lock
+    && touch install.lock \
+    && chown shopware:shopware install.lock \
+    # Stop MySQL
+    && pkill mysqld || true \
+    && sleep 5 \
+    # Clean up build artifacts but keep database
+    && rm -rf /var/www/html/var/cache/dev/* \
+    && rm -rf /var/www/html/var/log/* \
+    && echo "Shopware build-time installation completed"
 
 # Copy configuration files
 COPY --chown=shopware:shopware apache-shopware.conf /etc/apache2/sites-available/000-default.conf

@@ -47,7 +47,11 @@ RUN mv /tmp/shopware/* /tmp/shopware/.[^.]* /var/www/html/ 2>/dev/null || true \
     && rm -rf /tmp/shopware
 
 # Install Composer dependencies
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+RUN if [ "$SHOPWARE_VERSION" = "6.7.1.1" ]; then \
+        composer update --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs; \
+    else \
+        composer install --no-dev --optimize-autoloader --no-interaction; \
+    fi
 
 # Install Node.js dependencies and build assets
 RUN npm ci --only=production \

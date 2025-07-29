@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Build script for Shopware Development Images
 # Usage: ./build.sh [version] [platform]
 

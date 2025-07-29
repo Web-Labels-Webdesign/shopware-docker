@@ -255,7 +255,7 @@ RUN JWT_PASSPHRASE=$(openssl rand -base64 32) \
 # Switch back to root for build-time installation
 USER root
 
-# Initialize MySQL data directory during build
+# Initialize MySQL and install Shopware during build
 RUN echo "Initializing MySQL for build-time installation..." \
     # Initialize MySQL data directory
     && mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql \
@@ -271,19 +271,9 @@ RUN echo "Initializing MySQL for build-time installation..." \
     && echo 'default-authentication-plugin=mysql_native_password' >> /etc/mysql/conf.d/shopware-build.cnf \
     && echo 'skip-networking' >> /etc/mysql/conf.d/shopware-build.cnf \
     && echo 'bind-address=127.0.0.1' >> /etc/mysql/conf.d/shopware-build.cnf \
-    && chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql
-
-# Complete Shopware installation during build
-RUN echo "Installing Shopware during Docker build..." \
+    && chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql \
+    && echo "Installing Shopware during Docker build..." \
     && cd /var/www/html \
-    # Create MySQL 8.0 compatible configuration for build
-    && mkdir -p /etc/mysql/conf.d \
-    && echo '[mysqld]' > /etc/mysql/conf.d/shopware-build.cnf \
-    && echo 'sql_mode=STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' >> /etc/mysql/conf.d/shopware-build.cnf \
-    && echo 'tls-version=' >> /etc/mysql/conf.d/shopware-build.cnf \
-    && echo 'default-authentication-plugin=mysql_native_password' >> /etc/mysql/conf.d/shopware-build.cnf \
-    && echo 'skip-networking' >> /etc/mysql/conf.d/shopware-build.cnf \
-    && echo 'bind-address=127.0.0.1' >> /etc/mysql/conf.d/shopware-build.cnf \
     # Start MySQL in safe mode for build
     && mysqld_safe --user=mysql --skip-grant-tables --skip-networking & \
     && sleep 10 \

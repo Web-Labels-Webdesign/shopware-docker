@@ -94,6 +94,11 @@ docker run --rm -it shopware-dev:6.7.1.0 test -f /tmp/shopware_build.sql && echo
 - **Cause**: Missing line continuation backslashes in multi-line RUN commands
 - **Fix**: Ensure proper indentation and backslashes in conditional blocks
 
+#### Duplicate RUN Commands
+- **Issue**: "Syntax error: '&&' unexpected" at specific line numbers
+- **Cause**: Multiple RUN commands duplicating the same operations (e.g., MySQL setup)
+- **Fix**: Merge duplicate RUN commands into a single consolidated command
+
 #### MySQL Connection Issues
 - **Issue**: MySQL fails to start during build
 - **Cause**: Permission or configuration conflicts

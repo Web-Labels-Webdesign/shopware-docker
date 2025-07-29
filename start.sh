@@ -13,15 +13,67 @@ chown mysql:mysql /var/lib/mysql-home
 usermod -d /var/lib/mysql-home mysql
 
 # Ensure MySQL directories exist with proper permissions
+echo "🔧 Setting up MySQL directories..."
 mkdir -p /var/lib/mysql /var/run/mysqld /var/log/mysql
 chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql
+chmod 755 /var/lib/mysql /var/run/mysqld /var/log/mysql
+
+# Debug: Check directory permissions
+echo "MySQL directory permissions:"
+ls -la /var/lib/ | grep mysql
+ls -la /var/run/ | grep mysql
 
 # Initialize MySQL if needed
 if [ ! -d "/var/lib/mysql/mysql" ]; then
     echo "📦 Initializing MySQL database..."
+    
+    # Set MySQL initialization variables
+    MYSQL_LOG="/tmp/mysql_init.log"
+    
+    # Check if MySQL is already running
+    if pgrep mysqld > /dev/null; then
+        echo "⚠️ MySQL process already running, stopping it first..."
+        pkill mysqld || true
+        sleep 2
+    fi
+    
     # Initialize MySQL without SSL certificates to avoid security alerts
-    mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql --skip-ssl
-    echo "✅ MySQL database initialized without SSL"
+    echo "Running: mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql --skip-ssl --skip-networking"
+    
+    if timeout 120 mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql --skip-ssl --skip-networking > "$MYSQL_LOG" 2>&1; then
+        echo "✅ MySQL database initialized without SSL"
+        echo "MySQL initialization log:"
+        cat "$MYSQL_LOG" | head -10
+    else
+        echo "❌ MySQL initialization failed or timed out"
+        echo "MySQL initialization log:"
+        cat "$MYSQL_LOG" 2>/dev/null || echo "No log file found"
+        
+        # Try alternative initialization method
+        echo "🔄 Trying alternative initialization method..."
+        rm -rf /var/lib/mysql/*
+        
+        # Ensure directories are recreated with proper permissions
+        mkdir -p /var/lib/mysql
+        chown mysql:mysql /var/lib/mysql
+        chmod 755 /var/lib/mysql
+        
+        if timeout 120 mysql_install_db --user=mysql --datadir=/var/lib/mysql --skip-name-resolve --skip-test-db --force > "$MYSQL_LOG" 2>&1; then
+            echo "✅ MySQL database initialized with mysql_install_db"
+        else
+            echo "❌ Alternative MySQL initialization also failed"
+            echo "Full error log:"
+            cat "$MYSQL_LOG" 2>/dev/null || echo "No log file found"
+            echo "Disk space check:"
+            df -h /var/lib/mysql
+            echo "MySQL processes:"
+            ps aux | grep mysql || echo "No MySQL processes"
+            exit 1
+        fi
+    fi
+    
+    # Cleanup log file
+    rm -f "$MYSQL_LOG"
 fi
 
 # Clean up any SSL keys that might have been generated during initialization

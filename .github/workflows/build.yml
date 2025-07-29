@@ -303,7 +303,7 @@ jobs:
         uses: actions/delete-package-versions@v5
         continue-on-error: true
         with:
-          package-name: 'shopware-dev'
+          package-name: 'shopware-docker/shopware-dev'
           package-type: 'container'
           min-versions-to-keep: 4
           token: ${{ secrets.GITHUB_TOKEN }}

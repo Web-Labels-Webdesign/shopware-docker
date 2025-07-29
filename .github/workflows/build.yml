@@ -305,5 +305,14 @@ jobs:
         with:
           package-name: 'shopware-docker/shopware-dev'
           package-type: 'container'
-          min-versions-to-keep: 10
+          min-versions-to-keep: 5
+          # Keep major versions, latest, and cache images
+          ignore-versions: |
+            ^6\.5$
+            ^6\.6$
+            ^6\.7$
+            ^latest$
+            ^cache-.*$
+          # Only delete untagged versions and old patch versions
+          delete-only-untagged-versions: false
           token: ${{ secrets.GITHUB_TOKEN }}

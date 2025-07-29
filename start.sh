@@ -46,35 +46,54 @@ if [ ! -d "/var/lib/mysql/mysql" ]; then
     chown mysql:mysql /var/lib/mysql
     chmod 755 /var/lib/mysql
     
-    # Initialize MySQL without SSL certificates to avoid security alerts
-    echo "Running: mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql --skip-ssl"
+    # Create MySQL configuration for initialization
+    cat > /tmp/mysql-init.cnf << 'EOF'
+[mysqld]
+datadir=/var/lib/mysql
+socket=/var/run/mysqld/mysqld.sock
+user=mysql
+skip-ssl
+skip-networking
+bind-address=127.0.0.1
+pid-file=/var/run/mysqld/mysqld.pid
+log-error=/var/log/mysql/error.log
+EOF
+
+    # Create necessary directories
+    mkdir -p /var/run/mysqld /var/log/mysql
+    chown mysql:mysql /var/run/mysqld /var/log/mysql
+    chmod 755 /var/run/mysqld
     
-    if timeout 120 mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql --skip-ssl > "$MYSQL_LOG" 2>&1; then
-        echo "✅ MySQL database initialized without SSL"
-        echo "MySQL initialization log (first 10 lines):"
-        cat "$MYSQL_LOG" | head -10
+    # Initialize MySQL with proper configuration
+    echo "Running: mysqld --defaults-file=/tmp/mysql-init.cnf --initialize-insecure"
+    
+    if timeout 120 mysqld --defaults-file=/tmp/mysql-init.cnf --initialize-insecure > "$MYSQL_LOG" 2>&1; then
+        echo "✅ MySQL database initialized successfully"
+        echo "MySQL initialization log (last 10 lines):"
+        tail -10 "$MYSQL_LOG" 2>/dev/null || echo "No log available"
     else
-        echo "❌ MySQL initialization failed or timed out"
+        echo "❌ MySQL initialization failed"
         echo "MySQL initialization log:"
         cat "$MYSQL_LOG" 2>/dev/null || echo "No log file found"
         
-        # Check what MySQL version we have and what commands are available
-        echo "🔍 Checking MySQL version and available commands..."
-        mysqld --version || echo "mysqld version check failed"
-        which mysqld || echo "mysqld not found in PATH"
-        ls -la /usr/sbin/mysql* || echo "No mysql commands in /usr/sbin/"
-        ls -la /usr/bin/mysql* || echo "No mysql commands in /usr/bin/"
+        # Check MySQL error log
+        echo "MySQL error log:"
+        tail -20 /var/log/mysql/error.log 2>/dev/null || echo "No error log found"
         
-        # Try with different approach - use service to initialize
-        echo "🔄 Trying service-based initialization..."
-        service mysql start || echo "Service start failed"
-        sleep 5
+        # Try alternative initialization method
+        echo "🔄 Trying alternative initialization..."
+        rm -rf /var/lib/mysql/*
         
-        if mysqladmin ping -h localhost --silent 2>/dev/null; then
-            echo "✅ MySQL started successfully with service"
-            # Stop it so we can continue with our setup
-            service mysql stop
-            sleep 2
+        # Use mysql_install_db if available (older method)
+        if command -v mysql_install_db >/dev/null 2>&1; then
+            echo "Using mysql_install_db..."
+            if mysql_install_db --user=mysql --datadir=/var/lib/mysql --rpm --skip-name-resolve --skip-test-db > "$MYSQL_LOG" 2>&1; then
+                echo "✅ MySQL initialized with mysql_install_db"
+            else
+                echo "❌ mysql_install_db also failed"
+                cat "$MYSQL_LOG" 2>/dev/null || echo "No log available"
+                exit 1
+            fi
         else
             echo "❌ All MySQL initialization methods failed"
             echo "System information:"
@@ -84,6 +103,9 @@ if [ ! -d "/var/lib/mysql/mysql" ]; then
             exit 1
         fi
     fi
+    
+    # Clean up temporary config
+    rm -f /tmp/mysql-init.cnf
     
     # Cleanup log file
     rm -f "$MYSQL_LOG"
@@ -96,6 +118,11 @@ rm -f /var/lib/mysql/ca-key.pem /var/lib/mysql/server-key.pem /var/lib/mysql/pri
 # Start MySQL service
 echo "🗄️ Starting MySQL..."
 
+# Ensure required directories exist with proper permissions
+mkdir -p /var/run/mysqld /var/log/mysql
+chown mysql:mysql /var/run/mysqld /var/log/mysql
+chmod 755 /var/run/mysqld
+
 # Try starting MySQL and check for success
 if service mysql start; then
     echo "✅ MySQL service started successfully"
@@ -104,15 +131,23 @@ else
     echo "Checking MySQL error log:"
     tail -20 /var/log/mysql/error.log 2>/dev/null || echo "No MySQL error log found"
     
-    # Try to restart MySQL
-    echo "🔄 Attempting to restart MySQL..."
+    # Check if MySQL socket directory exists
+    echo "Checking MySQL socket directory:"
+    ls -la /var/run/mysqld/ 2>/dev/null || echo "Socket directory not found"
+    
+    # Try to fix permissions and restart MySQL
+    echo "🔧 Fixing permissions and attempting restart..."
+    chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql
+    chmod -R 755 /var/lib/mysql
     service mysql stop 2>/dev/null || true
-    sleep 2
+    sleep 3
     
     if service mysql start; then
-        echo "✅ MySQL restarted successfully"
+        echo "✅ MySQL restarted successfully after permission fix"
     else
-        echo "❌ MySQL restart failed"
+        echo "❌ MySQL restart failed after permission fix"
+        echo "Final MySQL error log:"
+        tail -30 /var/log/mysql/error.log 2>/dev/null || echo "No error log available"
         exit 1
     fi
 fi

@@ -178,6 +178,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
+# Fix MySQL user home directory and ensure proper directories
+RUN mkdir -p /var/lib/mysql-home /var/lib/mysql /var/run/mysqld /var/log/mysql \
+    && chown mysql:mysql /var/lib/mysql-home /var/lib/mysql /var/run/mysqld /var/log/mysql \
+    && usermod -d /var/lib/mysql-home mysql \
+    && chmod 755 /var/lib/mysql-home \
+    # Remove any existing MySQL data to ensure clean initialization at runtime
+    && rm -rf /var/lib/mysql/* \
+    # Disable MySQL SSL by default for development (keys will be generated at runtime if needed)
+    && echo "[mysqld]" >> /etc/mysql/mysql.conf.d/disable-ssl.cnf \
+    && echo "skip-ssl" >> /etc/mysql/mysql.conf.d/disable-ssl.cnf \
+    && echo "ssl=OFF" >> /etc/mysql/mysql.conf.d/disable-ssl.cnf
+
 # Configure Apache
 RUN a2enmod rewrite headers ssl
 
@@ -269,6 +281,9 @@ RUN ARCH=$(dpkg --print-architecture) \
     && tar -xzf mailpit.tar.gz -C /usr/local/bin/ \
     && rm mailpit.tar.gz \
     && chmod +x /usr/local/bin/mailpit
+
+# Create volumes to ensure data is not stored in container layer
+VOLUME ["/var/lib/mysql", "/var/www/html/var"]
 
 # Expose ports
 EXPOSE 80 443 3306 8025 9003

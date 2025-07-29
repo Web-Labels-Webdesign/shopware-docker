@@ -7,6 +7,11 @@ echo "🚀 Starting Shopware Development Environment..."
 mkdir -p /var/log/supervisor
 chown -R shopware:shopware /var/log/supervisor
 
+# Create MySQL user home directory
+mkdir -p /var/lib/mysql-home
+chown mysql:mysql /var/lib/mysql-home
+usermod -d /var/lib/mysql-home mysql
+
 # Ensure MySQL directories exist with proper permissions
 mkdir -p /var/lib/mysql /var/run/mysqld /var/log/mysql
 chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql
@@ -14,27 +19,55 @@ chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql
 # Initialize MySQL if needed
 if [ ! -d "/var/lib/mysql/mysql" ]; then
     echo "📦 Initializing MySQL database..."
-    mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql
+    # Initialize MySQL without SSL certificates to avoid security alerts
+    mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql --skip-ssl
+    echo "✅ MySQL database initialized without SSL"
 fi
+
+# Clean up any SSL keys that might have been generated during initialization
+echo "🔒 Ensuring no SSL keys are present in the image..."
+rm -f /var/lib/mysql/ca-key.pem /var/lib/mysql/server-key.pem /var/lib/mysql/private_key.pem /var/lib/mysql/client-key.pem /var/lib/mysql/ca.pem /var/lib/mysql/server-cert.pem /var/lib/mysql/client-cert.pem /var/lib/mysql/public_key.pem 2>/dev/null || true
 
 # Start MySQL service
 echo "🗄️ Starting MySQL..."
-service mysql start
+
+# Try starting MySQL and check for success
+if service mysql start; then
+    echo "✅ MySQL service started successfully"
+else
+    echo "❌ MySQL service failed to start"
+    echo "Checking MySQL error log:"
+    tail -20 /var/log/mysql/error.log 2>/dev/null || echo "No MySQL error log found"
+    
+    # Try to restart MySQL
+    echo "🔄 Attempting to restart MySQL..."
+    service mysql stop 2>/dev/null || true
+    sleep 2
+    
+    if service mysql start; then
+        echo "✅ MySQL restarted successfully"
+    else
+        echo "❌ MySQL restart failed"
+        exit 1
+    fi
+fi
 
 # Wait for MySQL to be ready
 echo "⏳ Waiting for MySQL to be ready..."
 for i in {1..30}; do
     if mysqladmin ping -h localhost --silent 2>/dev/null; then
-        echo "✅ MySQL is ready"
+        echo "✅ MySQL is ready and responding"
         break
     fi
     echo "Waiting for MySQL... ($i/30)"
     sleep 2
 done
 
-# Check if MySQL is actually running
+# Final check if MySQL is actually running
 if ! mysqladmin ping -h localhost --silent 2>/dev/null; then
-    echo "❌ MySQL failed to start properly"
+    echo "❌ MySQL failed to become ready"
+    echo "MySQL process status:"
+    ps aux | grep mysql || echo "No MySQL processes found"
     echo "MySQL error log:"
     tail -20 /var/log/mysql/error.log 2>/dev/null || echo "No MySQL error log found"
     exit 1

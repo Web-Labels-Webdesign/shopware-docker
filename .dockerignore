@@ -26,6 +26,18 @@ Thumbs.db
 *.log
 logs/
 
+# MySQL data and SSL certificates (security)
+mysql-data/
+var/lib/mysql/
+*.pem
+*-key.pem
+*-cert.pem
+ca.pem
+server-cert.pem
+client-cert.pem
+private_key.pem
+public_key.pem
+
 # Temporary files
 tmp/
 temp/

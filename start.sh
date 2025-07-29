@@ -37,37 +37,50 @@ if [ ! -d "/var/lib/mysql/mysql" ]; then
         sleep 2
     fi
     
-    # Initialize MySQL without SSL certificates to avoid security alerts
-    echo "Running: mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql --skip-ssl --skip-networking"
+    # Clean up existing MySQL data that might be from package installation
+    echo "🧹 Cleaning existing MySQL data..."
+    rm -rf /var/lib/mysql/*
     
-    if timeout 120 mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql --skip-ssl --skip-networking > "$MYSQL_LOG" 2>&1; then
+    # Ensure directories are properly set up
+    mkdir -p /var/lib/mysql
+    chown mysql:mysql /var/lib/mysql
+    chmod 755 /var/lib/mysql
+    
+    # Initialize MySQL without SSL certificates to avoid security alerts
+    echo "Running: mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql --skip-ssl"
+    
+    if timeout 120 mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql --skip-ssl > "$MYSQL_LOG" 2>&1; then
         echo "✅ MySQL database initialized without SSL"
-        echo "MySQL initialization log:"
+        echo "MySQL initialization log (first 10 lines):"
         cat "$MYSQL_LOG" | head -10
     else
         echo "❌ MySQL initialization failed or timed out"
         echo "MySQL initialization log:"
         cat "$MYSQL_LOG" 2>/dev/null || echo "No log file found"
         
-        # Try alternative initialization method
-        echo "🔄 Trying alternative initialization method..."
-        rm -rf /var/lib/mysql/*
+        # Check what MySQL version we have and what commands are available
+        echo "🔍 Checking MySQL version and available commands..."
+        mysqld --version || echo "mysqld version check failed"
+        which mysqld || echo "mysqld not found in PATH"
+        ls -la /usr/sbin/mysql* || echo "No mysql commands in /usr/sbin/"
+        ls -la /usr/bin/mysql* || echo "No mysql commands in /usr/bin/"
         
-        # Ensure directories are recreated with proper permissions
-        mkdir -p /var/lib/mysql
-        chown mysql:mysql /var/lib/mysql
-        chmod 755 /var/lib/mysql
+        # Try with different approach - use service to initialize
+        echo "🔄 Trying service-based initialization..."
+        service mysql start || echo "Service start failed"
+        sleep 5
         
-        if timeout 120 mysql_install_db --user=mysql --datadir=/var/lib/mysql --skip-name-resolve --skip-test-db --force > "$MYSQL_LOG" 2>&1; then
-            echo "✅ MySQL database initialized with mysql_install_db"
+        if mysqladmin ping -h localhost --silent 2>/dev/null; then
+            echo "✅ MySQL started successfully with service"
+            # Stop it so we can continue with our setup
+            service mysql stop
+            sleep 2
         else
-            echo "❌ Alternative MySQL initialization also failed"
-            echo "Full error log:"
-            cat "$MYSQL_LOG" 2>/dev/null || echo "No log file found"
-            echo "Disk space check:"
-            df -h /var/lib/mysql
-            echo "MySQL processes:"
-            ps aux | grep mysql || echo "No MySQL processes"
+            echo "❌ All MySQL initialization methods failed"
+            echo "System information:"
+            cat /etc/os-release | head -5
+            echo "MySQL packages installed:"
+            dpkg -l | grep mysql || echo "No MySQL packages found"
             exit 1
         fi
     fi

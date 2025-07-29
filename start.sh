@@ -368,14 +368,32 @@ ensure_env_var "DISABLE_EXTENSIONS_UPLOAD" "0"
 
 echo "✅ Configuration file .env.local updated successfully"
 
-# Install/Update Shopware if needed
-if [ ! -f install.lock ]; then
-    echo "🛠️ Installing Shopware..."
+# Check if Shopware is already installed (from build process)
+if [ -f install.lock ]; then
+    echo "✅ Shopware is already installed (from build process)"
     
-    # Clear cache first
-    echo "🧹 Clearing cache..."
-    su -c "php bin/console cache:clear --env=dev" shopware
+    # Just ensure database connection and clear cache
+    echo "🔍 Verifying database connection..."
+    if ! mysql -u shopware -pshopware -e "SELECT 1;" shopware >/dev/null 2>&1; then
+        echo "⚠️ Database user doesn't exist, recreating..."
+        mysql -u root <<EOF
+CREATE USER IF NOT EXISTS 'shopware'@'localhost' IDENTIFIED BY 'shopware';
+GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+    fi
     
+    # Update database schema if needed
+    su -c "php bin/console database:migrate --all --force" shopware
+    
+    # Clear runtime cache
+    echo "🧹 Clearing runtime cache..."
+    su -c "php bin/console cache:clear --env=dev" shopware || echo "Cache clear failed - continuing anyway"
+    
+else
+    echo "⚠️ Shopware not installed during build - performing runtime installation (slower)"
+    
+    # Fallback installation if build process didn't complete
     # Test database connection before installation
     echo "🔍 Testing database connection before installation..."
     
@@ -415,7 +433,7 @@ EOF
     fi
     
     # Create admin user
-    su -c "php bin/console user:create admin --admin --email=\"admin@example.com\" --firstName=\"Shop\" --lastName=\"Admin\" --password=\"shopware\"" shopware
+    su -c "php bin/console user:create admin --admin --email=\"admin@example.com\" --firstName=\"Shop\" --lastName=\"Admin\" --password=\"shopware\"" shopware || echo "Admin user might already exist"
     
     # Generate JWT keypair
     su -c "php bin/console system:generate-jwt-secret --force" shopware
@@ -432,14 +450,6 @@ EOF
     chown shopware:shopware install.lock
     
     echo "✅ Shopware installation completed!"
-else
-    echo "✅ Shopware already installed"
-    
-    # Update database schema if needed
-    su -c "php bin/console database:migrate --all --force" shopware
-    
-    # Clear cache
-    su -c "php bin/console cache:clear --env=dev" shopware
 fi
 
 # Set proper permissions

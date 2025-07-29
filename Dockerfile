@@ -243,6 +243,43 @@ RUN mkdir -p var/cache var/log var/sessions \
     && mkdir -p files \
     && mkdir -p custom/plugins custom/themes custom/apps
 
+# Generate required secrets for installation
+RUN JWT_PASSPHRASE=$(openssl rand -base64 32) \
+    && APP_SECRET=$(openssl rand -hex 32) \
+    && INSTANCE_ID=$(openssl rand -hex 32) \
+    && echo "JWT_PRIVATE_KEY_PASSPHRASE=${JWT_PASSPHRASE}" >> .env.local \
+    && echo "APP_SECRET=${APP_SECRET}" >> .env.local \
+    && echo "INSTANCE_ID=${INSTANCE_ID}" >> .env.local \
+    && echo "MAILER_URL=smtp://localhost:1025" >> .env.local
+
+# Install Shopware during build (requires temporary MySQL)
+RUN echo "Installing Shopware during build process..." \
+    # Start MySQL temporarily for installation
+    && sudo service mysql start \
+    && sleep 5 \
+    # Wait for MySQL to be ready
+    && timeout 30 bash -c 'until mysqladmin ping -h localhost --silent; do sleep 1; done' \
+    # Create database and user
+    && sudo mysql -u root <<EOF \
+    CREATE DATABASE shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; \
+    CREATE USER 'shopware'@'localhost' IDENTIFIED BY 'shopware'; \
+    GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost'; \
+    FLUSH PRIVILEGES; \
+    EOF \
+    # Install Shopware
+    && php bin/console system:install --basic-setup --force \
+    # Install demo data
+    && php bin/console framework:demodata --products=50 --categories=10 --media=20 \
+    # Clear cache
+    && php bin/console cache:clear \
+    # Create install lock
+    && touch install.lock \
+    # Stop MySQL
+    && sudo service mysql stop \
+    # Clean up temporary files but keep database data
+    && rm -rf var/cache/dev/* var/log/* \
+    && echo "Shopware installation completed during build"
+
 # Switch back to root for system configuration
 USER root
 

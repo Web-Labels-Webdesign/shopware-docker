@@ -89,10 +89,20 @@ docker run --rm -it shopware-dev:6.7.1.0 test -f /tmp/shopware_build.sql && echo
 
 ### Common Build Issues and Fixes
 
-#### Dockerfile Syntax Errors
+#### Dockerfile Syntax Errors (Most Common)
 - **Issue**: "Syntax error: '&&' unexpected" during build
-- **Cause**: Missing line continuation backslashes in multi-line RUN commands
-- **Fix**: Ensure proper indentation and backslashes in conditional blocks
+- **Cause**: Missing line continuation backslashes OR improper indentation in conditional blocks
+- **Fix**: Ensure proper indentation (4 spaces) for commands inside `if` statements
+- **Example**:
+  ```dockerfile
+  # ❌ Wrong - missing indentation
+  && if [ -f package.json ]; then \
+  su -s /bin/bash -c "npm install" user && \
+  
+  # ✅ Correct - proper indentation
+  && if [ -f package.json ]; then \
+      su -s /bin/bash -c "npm install" user && \
+  ```
 
 #### Duplicate RUN Commands
 - **Issue**: "Syntax error: '&&' unexpected" at specific line numbers

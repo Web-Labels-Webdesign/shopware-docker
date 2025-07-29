@@ -260,9 +260,9 @@ RUN echo "Initializing MySQL for build-time installation..." \
     # Initialize MySQL data directory
     && mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql \
     # Fix any configuration issues
-    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/,NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true \
-    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER,//g' {} \; 2>/dev/null || true \
-    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true \
+    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/,NO_AUTO_CREATE_USER//g' {} + 2>/dev/null || true \
+    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER,//g' {} + 2>/dev/null || true \
+    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER//g' {} + 2>/dev/null || true \
     # Create override configuration
     && mkdir -p /etc/mysql/conf.d \
     && echo '[mysqld]' > /etc/mysql/conf.d/shopware-build.cnf \

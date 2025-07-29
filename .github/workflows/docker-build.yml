@@ -1,0 +1,190 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - 'docker/**'
+      - '.github/workflows/docker-build.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+      - 'docker/**'
+      - '.github/workflows/docker-build.yml'
+  workflow_dispatch:
+    inputs:
+      shopware_version:
+        description: 'Shopware version to build'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - 'all'
+          - '6.5.8.18'
+          - '6.6.10.6' 
+          - '6.7.1.1'
+  schedule:
+    # Build weekly on Sundays at 2 AM UTC
+    - cron: '0 2 * * 0'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - shopware_version: "6.5.8.18"
+            php_version: "8.1"
+            tags: "6.5,6.5.8,6.5.8.18"
+          - shopware_version: "6.6.10.6"
+            php_version: "8.2"
+            tags: "6.6,6.6.10,6.6.10.6,latest"
+          - shopware_version: "6.7.1.1"
+            php_version: "8.2"
+            tags: "6.7,6.7.1,6.7.1.1"
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ matrix.shopware_version }}
+            type=raw,value={{branch}}-${{ matrix.shopware_version }}
+          labels: |
+            org.opencontainers.image.title=Shopware ${{ matrix.shopware_version }} Docker
+            org.opencontainers.image.description=Docker image for Shopware ${{ matrix.shopware_version }} with PHP ${{ matrix.php_version }}
+            org.opencontainers.image.vendor=Shopware Docker
+
+      - name: Generate additional tags
+        id: tags
+        run: |
+          TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.shopware_version }}"
+          IFS=',' read -ra TAG_ARRAY <<< "${{ matrix.tags }}"
+          for tag in "${TAG_ARRAY[@]}"; do
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag"
+          done
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SHOPWARE_VERSION=${{ matrix.shopware_version }}
+            PHP_VERSION=${{ matrix.php_version }}
+            SHOPWARE_REPO=https://github.com/shopware/shopware.git
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test Docker image
+        if: github.event_name == 'pull_request'
+        run: |
+          docker run --rm -d --name test-shopware \
+            -e DATABASE_URL=sqlite:///tmp/test.db \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.shopware_version }}
+          
+          # Wait for container to be ready
+          sleep 30
+          
+          # Check if container is running
+          docker ps | grep test-shopware
+          
+          # Check Shopware version
+          docker exec test-shopware php -r "echo 'PHP Version: ' . PHP_VERSION . PHP_EOL;"
+          
+          # Clean up
+          docker stop test-shopware
+
+  build-single:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.shopware_version != 'all'
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set build variables
+        id: vars
+        run: |
+          case "${{ github.event.inputs.shopware_version }}" in
+            "6.5.8.18")
+              echo "php_version=8.1" >> $GITHUB_OUTPUT
+              echo "tags=6.5,6.5.8,6.5.8.18" >> $GITHUB_OUTPUT
+              ;;
+            "6.6.10.6")
+              echo "php_version=8.2" >> $GITHUB_OUTPUT
+              echo "tags=6.6,6.6.10,6.6.10.6,latest" >> $GITHUB_OUTPUT
+              ;;
+            "6.7.1.1")
+              echo "php_version=8.2" >> $GITHUB_OUTPUT
+              echo "tags=6.7,6.7.1,6.7.1.1" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate tags
+        id: tags
+        run: |
+          TAGS="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.shopware_version }}"
+          IFS=',' read -ra TAG_ARRAY <<< "${{ steps.vars.outputs.tags }}"
+          for tag in "${TAG_ARRAY[@]}"; do
+            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$tag"
+          done
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            SHOPWARE_VERSION=${{ github.event.inputs.shopware_version }}
+            PHP_VERSION=${{ steps.vars.outputs.php_version }}
+            SHOPWARE_REPO=https://github.com/shopware/shopware.git
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

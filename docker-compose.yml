@@ -1,0 +1,90 @@
+services:
+  shopware:
+    build:
+      context: .
+      args:
+        SHOPWARE_VERSION: ${SHOPWARE_VERSION:-6.6.10.6}
+        PHP_VERSION: ${PHP_VERSION:-8.2}
+        SHOPWARE_REPO: ${SHOPWARE_REPO:-https://github.com/shopware/shopware.git}
+    container_name: shopware-app
+    ports:
+      - "80:80"
+    volumes:
+      - shopware_data:/var/www/html/var
+      - shopware_files:/var/www/html/files
+    environment:
+      - APP_ENV=dev
+      - APP_URL=http://localhost
+      - DATABASE_URL=mysql://shopware:shopware@mysql:3306/shopware
+      - REDIS_URL=redis://redis:6379
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    depends_on:
+      - mysql
+      - redis
+      - elasticsearch
+    networks:
+      - shopware-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: shopware-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: shopware
+      MYSQL_USER: shopware
+      MYSQL_PASSWORD: shopware
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/my.cnf:/etc/mysql/conf.d/shopware.cnf
+    networks:
+      - shopware-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: shopware-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - shopware-network
+
+  elasticsearch:
+    image: elasticsearch:7.17.0
+    container_name: shopware-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - shopware-network
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: shopware-mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - shopware-network
+
+  adminer:
+    image: adminer
+    container_name: shopware-adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - shopware-network
+
+volumes:
+  mysql_data:
+  elasticsearch_data:
+  shopware_data:
+  shopware_files:
+
+networks:
+  shopware-network:
+    driver: bridge

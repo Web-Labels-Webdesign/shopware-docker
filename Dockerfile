@@ -6,6 +6,10 @@ ARG PHP_VERSION=8.2
 # Determine PHP version based on Shopware version
 FROM php:${PHP_VERSION}-fpm
 
+# Re-declare build arguments for use in this stage
+ARG SHOPWARE_VERSION=6.6.10.6
+ARG SHOPWARE_REPO=https://github.com/shopware/shopware.git
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \

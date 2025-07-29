@@ -87,6 +87,18 @@ docker run --rm -it shopware-dev:6.7.1.0 ls -la /var/www/html/install.lock
 docker run --rm -it shopware-dev:6.7.1.0 test -f /tmp/shopware_build.sql && echo "Backup exists"
 ```
 
+### Common Build Issues and Fixes
+
+#### Dockerfile Syntax Errors
+- **Issue**: "Syntax error: '&&' unexpected" during build
+- **Cause**: Missing line continuation backslashes in multi-line RUN commands
+- **Fix**: Ensure proper indentation and backslashes in conditional blocks
+
+#### MySQL Connection Issues
+- **Issue**: MySQL fails to start during build
+- **Cause**: Permission or configuration conflicts
+- **Fix**: Verify MySQL user permissions and configuration files
+
 ### Runtime Testing
 ```bash
 # Test fresh container startup

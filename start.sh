@@ -115,15 +115,29 @@ EOF
         fi
     fi
     
-    # Create a runtime MySQL configuration to override system defaults
+    # Fix system MySQL configuration files to remove MySQL 5.7 incompatible settings
+    echo "🔧 Fixing system MySQL configuration for MySQL 8.0 compatibility..."
+    
+    # Remove NO_AUTO_CREATE_USER from all MySQL configuration files
+    find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/,NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true
+    find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER,//g' {} \; 2>/dev/null || true
+    find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true
+    
+    # Replace skip-ssl with tls-version in all config files
+    find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/skip-ssl/tls-version=/g' {} \; 2>/dev/null || true
+    
+    # Create our override configuration
+    mkdir -p /etc/mysql/conf.d
     cat > /etc/mysql/conf.d/shopware-override.cnf << 'EOF'
 [mysqld]
-# MySQL 8.0 compatible configuration
+# MySQL 8.0 compatible configuration - highest priority
 sql_mode=STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
 tls-version=''
 default-authentication-plugin=mysql_native_password
 innodb_buffer_pool_size=256M
 max_allowed_packet=64M
+# Disable problematic options
+skip-ssl=0
 EOF
 
     # Clean up temporary config
@@ -147,6 +161,57 @@ chmod 755 /var/run/mysqld
 
 # Remove socket lock files before starting (dockware optimization)
 rm -f /var/run/mysqld/mysqld.sock.lock /var/lib/mysql/mysql.sock.lock 2>/dev/null || true
+
+# Apply MySQL 8.0 configuration fixes before starting service
+echo "🔧 Applying MySQL 8.0 configuration fixes..."
+
+# Backup and replace main MySQL configuration
+if [ -f /etc/mysql/my.cnf ]; then
+    cp /etc/mysql/my.cnf /etc/mysql/my.cnf.backup 2>/dev/null || true
+fi
+
+# Create a clean MySQL 8.0 compatible configuration
+cat > /etc/mysql/my.cnf << 'EOF'
+[mysql]
+default-character-set = utf8mb4
+
+[mysqld]
+# Basic configuration
+user = mysql
+bind-address = 127.0.0.1
+port = 3306
+datadir = /var/lib/mysql
+socket = /var/run/mysqld/mysqld.sock
+pid-file = /var/run/mysqld/mysqld.pid
+log-error = /var/log/mysql/error.log
+
+# MySQL 8.0 compatible settings
+sql_mode = STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+tls-version = ''
+default-authentication-plugin = mysql_native_password
+
+# Performance tuning for Shopware
+innodb_buffer_pool_size = 256M
+max_allowed_packet = 64M
+innodb_log_buffer_size = 16M
+innodb_flush_method = O_DIRECT
+innodb_file_per_table = 1
+
+# Character set
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+[mysqld_safe]
+socket = /var/run/mysqld/mysqld.sock
+nice = 0
+
+[client]
+default-character-set = utf8mb4
+socket = /var/run/mysqld/mysqld.sock
+EOF
+
+# Remove any conflicting configuration files
+rm -f /etc/mysql/conf.d/*sql_mode* 2>/dev/null || true
 
 # Try starting MySQL and check for success
 if service mysql start; then

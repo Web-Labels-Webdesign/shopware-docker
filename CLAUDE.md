@@ -6,6 +6,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Shopware 6 development Docker environment that provides a modern alternative to dockware. It creates production-ready Docker images for Shopware development with all necessary tools pre-configured.
 
+### Key Features
+- **Build-time installation**: Complete Shopware installation happens during Docker build for faster startup
+- **Multi-stage builds**: Optimized Docker builds with clear separation of concerns
+- **Development-focused**: Pre-configured with Xdebug, demo data, and development tools
+- **Modern tooling**: Uses Mailpit instead of MailHog, latest PHP versions, and optimized configurations
+
+### Architecture Changes (Latest Update)
+The installation process has been moved from startup to build time:
+
+**Before**: 
+- Shopware installation happened during container startup
+- Long startup times (2-5 minutes)
+- Network dependencies during startup
+
+**After**:
+- Complete Shopware installation during Docker build
+- Container startup in seconds
+- Database backup/restore for fresh instances
+- Pre-built assets and JWT secrets
+
 ## Build and Development Commands
 
 ### Building Docker Images

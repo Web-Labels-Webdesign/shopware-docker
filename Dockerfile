@@ -273,43 +273,61 @@ RUN echo "Initializing MySQL for build-time installation..." \
     && echo 'bind-address=127.0.0.1' >> /etc/mysql/conf.d/shopware-build.cnf \
     && chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql
 
-# Install Shopware during build using mysqld_safe
+# Complete Shopware installation during build
 RUN echo "Installing Shopware during Docker build..." \
     && cd /var/www/html \
+    # Create MySQL 8.0 compatible configuration for build
+    && mkdir -p /etc/mysql/conf.d \
+    && echo '[mysqld]' > /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'sql_mode=STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' >> /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'tls-version=' >> /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'default-authentication-plugin=mysql_native_password' >> /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'skip-networking' >> /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'bind-address=127.0.0.1' >> /etc/mysql/conf.d/shopware-build.cnf \
     # Start MySQL in safe mode for build
     && mysqld_safe --user=mysql --skip-grant-tables --skip-networking & \
     && sleep 10 \
     # Wait for MySQL to be ready
     && timeout 60 bash -c 'until mysqladmin ping -h localhost --silent 2>/dev/null; do echo "Waiting for MySQL..."; sleep 2; done' \
-    # Setup database and user
-    && mysql -u root <<'EOSQL'
-CREATE DATABASE IF NOT EXISTS shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS 'shopware'@'localhost' IDENTIFIED BY 'shopware';
-GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost';
-FLUSH PRIVILEGES;
-EOSQL
-\
-    # Switch to shopware user and install
+    # Setup database and user using individual commands
+    && mysql -u root -e "CREATE DATABASE IF NOT EXISTS shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
+    && mysql -u root -e "CREATE USER IF NOT EXISTS 'shopware'@'localhost' IDENTIFIED BY 'shopware';" \
+    && mysql -u root -e "GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost';" \
+    && mysql -u root -e "FLUSH PRIVILEGES;" \
     && chown -R shopware:shopware /var/www/html \
     && su -s /bin/bash -c "php bin/console system:install --basic-setup --force" shopware \
     && su -s /bin/bash -c "php bin/console user:create admin --admin --email='admin@localhost' --firstName='Admin' --lastName='User' --password='shopware'" shopware \
+    && su -s /bin/bash -c "php bin/console system:generate-jwt-secret --force" shopware \
     && su -s /bin/bash -c "php bin/console framework:demodata --products=20 --categories=5 --media=10" shopware \
+    # Install and build assets if package.json exists
+    && if [ -f package.json ]; then \
+    su -s /bin/bash -c "npm install --no-audit --no-fund" shopware && \
+    su -s /bin/bash -c "npm run build:all" shopware; \
+    fi \
     && su -s /bin/bash -c "php bin/console cache:clear" shopware \
-    # Create install lock
-    && touch install.lock \
+    # Create comprehensive install lock with installation metadata
+    && echo "INSTALLATION_DATE=$(date -Iseconds)" > install.lock \
+    && echo "SHOPWARE_VERSION=${SHOPWARE_VERSION}" >> install.lock \
+    && echo "PHP_VERSION=${PHP_VERSION}" >> install.lock \
+    && echo "BUILD_COMPLETE=true" >> install.lock \
     && chown shopware:shopware install.lock \
-    # Stop MySQL
+    # Create database backup for faster startup
+    && mysqldump -u root shopware > /tmp/shopware_build.sql \
+    && chown shopware:shopware /tmp/shopware_build.sql \
+    # Stop MySQL and clean up
     && pkill mysqld || true \
     && sleep 5 \
-    # Clean up build artifacts but keep database
+    # Clean up build artifacts but preserve critical files
     && rm -rf /var/www/html/var/cache/dev/* \
     && rm -rf /var/www/html/var/log/* \
-    && echo "Shopware build-time installation completed"
+    && rm -f /etc/mysql/conf.d/shopware-build.cnf \
+    && echo "Shopware build-time installation completed successfully"
 
 # Copy configuration files
 COPY --chown=shopware:shopware apache-shopware.conf /etc/apache2/sites-available/000-default.conf
 COPY --chown=shopware:shopware supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY --chown=shopware:shopware start.sh /usr/local/bin/start.sh
+COPY --chown=shopware:shopware health.php /var/www/html/health.php
 
 # Set proper permissions
 RUN chmod +x /usr/local/bin/start.sh \

@@ -20,11 +20,11 @@ docker run -d \
 
 ## 📋 Available Versions
 
-| Shopware Version | PHP Version | Tag | Base Image | Status |
-| ---------------- | ----------- | --- | ---------- | ------ |
-| 6.7.1.0 | 8.4 | `6.7.1.0`, `6.7`, `latest` | Ubuntu 22.04 | ✅ Active |
-| 6.6.10.6 | 8.3 | `6.6.10.6`, `6.6` | Ubuntu 22.04 | ✅ Active |
-| 6.5.8.18 | 8.2 | `6.5.8.18`, `6.5` | Ubuntu 22.04 | ✅ Active |
+| Shopware Version | PHP Version | Tag                        | Base Image   | Status   |
+| ---------------- | ----------- | -------------------------- | ------------ | -------- |
+| 6.7.1.0          | 8.4         | `6.7.1.0`, `6.7`, `latest` | Ubuntu 22.04 | ✅ Active |
+| 6.6.10.6         | 8.3         | `6.6.10.6`, `6.6`          | Ubuntu 22.04 | ✅ Active |
+| 6.5.8.18         | 8.2         | `6.5.8.18`, `6.5`          | Ubuntu 22.04 | ✅ Active |
 
 ### What's Included
 
@@ -37,6 +37,21 @@ docker run -d \
 - **Shopware CLI** and **Composer 2**
 - **Demo data** pre-installed for development
 - **All development tools** included
+
+### ⚡ Build-Time Installation
+
+**Faster Development Setup:**
+- **Pre-installed Shopware** - Complete installation done during Docker build
+- **Ready-to-use database** - Pre-configured with admin user and demo data
+- **Optimized startup** - No installation delays, services start immediately
+- **Build-time assets** - Frontend assets pre-built for immediate development
+- **Database backup** - Automatic restoration for fresh container instances
+
+**Benefits:**
+- Container startup in seconds instead of minutes
+- Consistent development environment across team members
+- No network dependencies during container startup
+- Reproducible builds with locked installation state
 
 ## 🛠️ Development Tools
 - **Xdebug 3** - Full debugging support with IDE integration
@@ -195,15 +210,15 @@ docker exec <container> shopware-cli project generate-jwt     # Generate JWT key
 
 ## 🔧 Environment Variables
 
-| Variable                               | Default                                              | Description                               |
-| -------------------------------------- | ---------------------------------------------------- | ----------------------------------------- |
-| `APP_URL`                              | `http://localhost`                                   | Base URL for Shopware                    |
+| Variable                               | Default                                             | Description                               |
+| -------------------------------------- | --------------------------------------------------- | ----------------------------------------- |
+| `APP_URL`                              | `http://localhost`                                  | Base URL for Shopware                     |
 | `DATABASE_URL`                         | `mysql://shopware:shopware@localhost:3306/shopware` | Database connection                       |
-| `APP_ENV`                              | `dev`                                                | Shopware environment mode                 |
-| `XDEBUG_ENABLED`                       | `1`                                                  | Enable/disable Xdebug                    |
-| `SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS` | `1`                                                  | Only build admin extensions (faster)     |
-| `DISABLE_ADMIN_COMPILATION_TYPECHECK`  | `1`                                                  | Disable TypeScript checking (faster)     |
-| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD`     | `1`                                                  | Skip Chromium download for faster startup|
+| `APP_ENV`                              | `dev`                                               | Shopware environment mode                 |
+| `XDEBUG_ENABLED`                       | `1`                                                 | Enable/disable Xdebug                     |
+| `SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS` | `1`                                                 | Only build admin extensions (faster)      |
+| `DISABLE_ADMIN_COMPILATION_TYPECHECK`  | `1`                                                 | Disable TypeScript checking (faster)      |
+| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD`     | `1`                                                 | Skip Chromium download for faster startup |
 
 ## 🐛 Debugging Setup
 

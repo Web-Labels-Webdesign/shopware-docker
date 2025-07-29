@@ -4,7 +4,7 @@ ARG SHOPWARE_REPO=https://github.com/shopware/shopware.git
 ARG PHP_VERSION=8.2
 
 # Determine PHP version based on Shopware version
-FROM php:${PHP_VERSION}-fpm
+FROM docker.io/php:${PHP_VERSION}-fpm
 
 # Re-declare build arguments for use in this stage
 ARG SHOPWARE_VERSION=6.6.10.6
@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY --from=docker.io/composer:latest /usr/bin/composer /usr/bin/composer
 
 # Clone Shopware base repository and checkout specified version
 RUN git clone ${SHOPWARE_REPO} /tmp/shopware \

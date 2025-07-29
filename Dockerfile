@@ -260,12 +260,10 @@ RUN echo "Installing Shopware during build process..." \
     # Wait for MySQL to be ready
     && timeout 30 bash -c 'until mysqladmin ping -h localhost --silent; do sleep 1; done' \
     # Create database and user
-    && sudo mysql -u root <<EOF \
-    CREATE DATABASE shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; \
-    CREATE USER 'shopware'@'localhost' IDENTIFIED BY 'shopware'; \
-    GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost'; \
-    FLUSH PRIVILEGES; \
-    EOF \
+    && sudo mysql -u root -e "CREATE DATABASE shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
+    && sudo mysql -u root -e "CREATE USER 'shopware'@'localhost' IDENTIFIED BY 'shopware';" \
+    && sudo mysql -u root -e "GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost';" \
+    && sudo mysql -u root -e "FLUSH PRIVILEGES;" \
     # Install Shopware
     && php bin/console system:install --basic-setup --force \
     # Install demo data

@@ -49,17 +49,25 @@ if [ ! -d "/var/lib/mysql/mysql" ]; then
     # Remove any socket lock files (dockware optimization)
     rm -f /var/run/mysqld/mysqld.sock.lock /var/lib/mysql/mysql.sock.lock 2>/dev/null || true
     
-    # Create MySQL configuration for initialization
+    # Create MySQL configuration for initialization (MySQL 8.0 compatible)
     cat > /tmp/mysql-init.cnf << 'EOF'
 [mysqld]
 datadir=/var/lib/mysql
 socket=/var/run/mysqld/mysqld.sock
 user=mysql
-skip-ssl
+# Use tls-version='' instead of skip-ssl for MySQL 8.0
+tls-version=''
 skip-networking
 bind-address=127.0.0.1
 pid-file=/var/run/mysqld/mysqld.pid
 log-error=/var/log/mysql/error.log
+# MySQL 8.0 compatible sql_mode (NO_AUTO_CREATE_USER removed in 8.0)
+sql_mode=STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+# Additional MySQL 8.0 optimizations
+default-authentication-plugin=mysql_native_password
+innodb_buffer_pool_size=256M
+innodb_log_file_size=64M
+max_allowed_packet=64M
 EOF
 
     # Create necessary directories
@@ -107,6 +115,17 @@ EOF
         fi
     fi
     
+    # Create a runtime MySQL configuration to override system defaults
+    cat > /etc/mysql/conf.d/shopware-override.cnf << 'EOF'
+[mysqld]
+# MySQL 8.0 compatible configuration
+sql_mode=STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+tls-version=''
+default-authentication-plugin=mysql_native_password
+innodb_buffer_pool_size=256M
+max_allowed_packet=64M
+EOF
+
     # Clean up temporary config
     rm -f /tmp/mysql-init.cnf
     

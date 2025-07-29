@@ -17,16 +17,16 @@ on:
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:
     inputs:
-      shopware_version:
-        description: 'Shopware version to build'
+      shopware_branch:
+        description: 'Shopware branch to build'
         required: false
         default: 'all'
         type: choice
         options:
           - 'all'
-          - '6.5.8.18'
-          - '6.6.10.6' 
-          - '6.7.1.1'
+          - '6.5'
+          - '6.6' 
+          - '6.7'
   schedule:
     # Build weekly on Sundays at 2 AM UTC
     - cron: '0 2 * * 0'
@@ -35,23 +35,40 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  get-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      shopware_6_5: ${{ steps.versions.outputs.shopware_6_5 }}
+      shopware_6_6: ${{ steps.versions.outputs.shopware_6_6 }}
+      shopware_6_7: ${{ steps.versions.outputs.shopware_6_7 }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Get latest Shopware versions
+        id: versions
+        run: |
+          chmod +x scripts/get-latest-versions.sh
+          ./scripts/get-latest-versions.sh
+
   build:
     runs-on: ubuntu-latest
+    needs: get-versions
     permissions:
       contents: read
       packages: write
     strategy:
       matrix:
         include:
-          - shopware_version: "6.5.8.18"
+          - shopware_version: ${{ needs.get-versions.outputs.shopware_6_5 }}
             php_version: "8.1"
-            tags: "6.5,6.5.8,6.5.8.18"
-          - shopware_version: "6.6.10.6"
+            tags: "6.5"
+          - shopware_version: ${{ needs.get-versions.outputs.shopware_6_6 }}
             php_version: "8.2"
-            tags: "6.6,6.6.10,6.6.10.6,latest"
-          - shopware_version: "6.7.1.1"
+            tags: "6.6,latest"
+          - shopware_version: ${{ needs.get-versions.outputs.shopware_6_7 }}
             php_version: "8.2"
-            tags: "6.7,6.7.1,6.7.1.1"
+            tags: "6.7"
     
     steps:
       - name: Checkout repository
@@ -131,7 +148,8 @@ jobs:
 
   build-single:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.shopware_version != 'all'
+    needs: get-versions
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.shopware_branch != 'all'
     permissions:
       contents: read
       packages: write
@@ -147,18 +165,21 @@ jobs:
       - name: Set build variables
         id: vars
         run: |
-          case "${{ github.event.inputs.shopware_version }}" in
-            "6.5.8.18")
+          case "${{ github.event.inputs.shopware_branch }}" in
+            "6.5")
+              echo "shopware_version=${{ needs.get-versions.outputs.shopware_6_5 }}" >> $GITHUB_OUTPUT
               echo "php_version=8.1" >> $GITHUB_OUTPUT
-              echo "tags=6.5,6.5.8,6.5.8.18" >> $GITHUB_OUTPUT
+              echo "tags=6.5" >> $GITHUB_OUTPUT
               ;;
-            "6.6.10.6")
+            "6.6")
+              echo "shopware_version=${{ needs.get-versions.outputs.shopware_6_6 }}" >> $GITHUB_OUTPUT
               echo "php_version=8.2" >> $GITHUB_OUTPUT
-              echo "tags=6.6,6.6.10,6.6.10.6,latest" >> $GITHUB_OUTPUT
+              echo "tags=6.6,latest" >> $GITHUB_OUTPUT
               ;;
-            "6.7.1.1")
+            "6.7")
+              echo "shopware_version=${{ needs.get-versions.outputs.shopware_6_7 }}" >> $GITHUB_OUTPUT
               echo "php_version=8.2" >> $GITHUB_OUTPUT
-              echo "tags=6.7,6.7.1,6.7.1.1" >> $GITHUB_OUTPUT
+              echo "tags=6.7" >> $GITHUB_OUTPUT
               ;;
           esac
 
@@ -175,7 +196,7 @@ jobs:
       - name: Generate tags
         id: tags
         run: |
-          TAGS="${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ github.event.inputs.shopware_version }}"
+          TAGS="${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ steps.vars.outputs.shopware_version }}"
           IFS=',' read -ra TAG_ARRAY <<< "${{ steps.vars.outputs.tags }}"
           for tag in "${TAG_ARRAY[@]}"; do
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:$tag"
@@ -190,7 +211,7 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
-            SHOPWARE_VERSION=${{ github.event.inputs.shopware_version }}
+            SHOPWARE_VERSION=${{ steps.vars.outputs.shopware_version }}
             PHP_VERSION=${{ steps.vars.outputs.php_version }}
             SHOPWARE_REPO=https://github.com/shopware/shopware.git
           cache-from: type=gha

@@ -1,30 +1,30 @@
 {
-    "name": "webla/split-comission",
-    "description": "Sample Shopware 6 plugin for testing the development environment",
-    "type": "shopware-plugin",
-    "license": "MIT",
-    "authors": [
-        {
-            "name": "Web Labels Webdesign"
-        }
-    ],
-    "require": {
-        "shopware/core": "~6.5.0 || ~6.6.0 || ~6.7.0"
-    },
-    "extra": {
-        "shopware-plugin-class": "WebLa\\SplitComission\\WebLaSplitComission",
-        "label": {
-            "en-GB": "Split Commission Plugin",
-            "de-DE": "Split Commission Plugin"
-        },
-        "description": {
-            "en-GB": "Sample plugin for testing Shopware development environment",
-            "de-DE": "Beispiel-Plugin zum Testen der Shopware-Entwicklungsumgebung"
-        }
-    },
-    "autoload": {
-        "psr-4": {
-            "WebLa\\SplitComission\\": "src/"
-        }
-    }
+	"name": "webla/split-comission",
+	"description": "Sample Shopware 6 plugin for testing the development environment",
+	"type": "shopware-plugin",
+	"license": "MIT",
+	"authors": [
+		{
+			"name": "Web Labels Webdesign"
+		}
+	],
+	"require": {
+		"shopware/core": "~6.5.0 || ~6.6.0 || ~6.7.0"
+	},
+	"extra": {
+		"shopware-plugin-class": "WebLa\\SplitComission\\WebLaSplitComission",
+		"label": {
+			"en-GB": "Split Commission Plugin",
+			"de-DE": "Split Commission Plugin"
+		},
+		"description": {
+			"en-GB": "Sample plugin for testing Shopware development environment",
+			"de-DE": "Beispiel-Plugin zum Testen der Shopware-Entwicklungsumgebung"
+		}
+	},
+	"autoload": {
+		"psr-4": {
+			"WebLa\\SplitComission\\": "src/"
+		}
+	}
 }

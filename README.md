@@ -12,6 +12,8 @@ This repository provides Docker images for Shopware 6 development with support f
 - 🐛 **Xdebug**: Configurable Xdebug for debugging
 - 🔄 **Auto-builds**: Weekly builds to get latest Shopware updates
 - 🌐 **Multi-platform**: Supports AMD64 and ARM64 architectures
+- ⚡ **Fast startup**: Shopware pre-installed during build for faster container startup
+- 🔧 **Development optimized**: Pre-configured for plugin development
 
 ## Quick Start
 
@@ -62,7 +64,20 @@ git clone https://github.com/Web-Labels-Webdesign/shopware-docker.git
 cd shopware-docker
 ```
 
-2. Build a specific version:
+2. Build a specific version using the build script:
+
+**Linux/macOS:**
+```bash
+chmod +x build.sh
+./build.sh 6.7  # or 6.5, 6.6
+```
+
+**Windows (PowerShell):**
+```powershell
+.\build.ps1 -Version 6.7  # or 6.5, 6.6
+```
+
+**Manual build:**
 ```bash
 docker build --build-arg SHOPWARE_VERSION=6.7 --build-arg PHP_VERSION=8.3 -t shopware-dev:6.7 .
 ```
@@ -97,12 +112,12 @@ docker run -d --name shopware-dev \
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `XDEBUG_ENABLED` | Enable/disable Xdebug | `0` |
-| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD` | Skip Chromium download for Puppeteer | `0` |
-| `SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS` | Build only extensions in admin | `0` |
-| `DISABLE_ADMIN_COMPILATION_TYPECHECK` | Disable TypeScript checking | `0` |
+| Variable                               | Description                          | Default |
+| -------------------------------------- | ------------------------------------ | ------- |
+| `XDEBUG_ENABLED`                       | Enable/disable Xdebug                | `0`     |
+| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD`     | Skip Chromium download for Puppeteer | `0`     |
+| `SHOPWARE_ADMIN_BUILD_ONLY_EXTENSIONS` | Build only extensions in admin       | `0`     |
+| `DISABLE_ADMIN_COMPILATION_TYPECHECK`  | Disable TypeScript checking          | `0`     |
 
 ## Volumes
 

@@ -255,14 +255,16 @@ RUN JWT_PASSPHRASE=$(openssl rand -base64 32) \
 # Switch back to root for build-time installation
 USER root
 
-# Initialize MySQL data directory
-RUN echo "Initializing MySQL for build-time installation..." \
-    && mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql
+# Prepare MySQL for build-time installation
+RUN echo "Preparing MySQL for build-time installation..." \
+    && mkdir -p /var/lib/mysql /var/run/mysqld /var/log/mysql \
+    && chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql \
+    && chmod 755 /var/lib/mysql /var/run/mysqld /var/log/mysql
 
-# Fix MySQL configuration issues
-RUN find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/,NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true
-RUN find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER,//g' {} \; 2>/dev/null || true  
-RUN find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true
+# Fix MySQL configuration issues before initialization
+RUN find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/,NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true \
+    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER,//g' {} \; 2>/dev/null || true \
+    && find /etc/mysql -name "*.cnf" -type f -exec sed -i 's/NO_AUTO_CREATE_USER//g' {} \; 2>/dev/null || true
 
 # Create MySQL build configuration
 RUN mkdir -p /etc/mysql/conf.d \
@@ -272,47 +274,96 @@ RUN mkdir -p /etc/mysql/conf.d \
     && echo 'default-authentication-plugin=mysql_native_password' >> /etc/mysql/conf.d/shopware-build.cnf \
     && echo 'skip-networking' >> /etc/mysql/conf.d/shopware-build.cnf \
     && echo 'bind-address=127.0.0.1' >> /etc/mysql/conf.d/shopware-build.cnf \
-    && chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql
+    && echo 'innodb_flush_log_at_trx_commit=0' >> /etc/mysql/conf.d/shopware-build.cnf \
+    && echo 'innodb_buffer_pool_size=128M' >> /etc/mysql/conf.d/shopware-build.cnf
 
-# Install Shopware during build
-RUN echo "Installing Shopware during Docker build..." \
-    && cd /var/www/html \
-    && mysqld_safe --user=mysql --skip-grant-tables --skip-networking & \
-    && sleep 10 \
-    && timeout 60 bash -c 'until mysqladmin ping -h localhost --silent 2>/dev/null; do echo "Waiting for MySQL..."; sleep 2; done' \
-    && mysql -u root -e "CREATE DATABASE IF NOT EXISTS shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" \
-    && mysql -u root -e "CREATE USER IF NOT EXISTS 'shopware'@'localhost' IDENTIFIED BY 'shopware';" \
-    && mysql -u root -e "GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost';" \
-    && mysql -u root -e "FLUSH PRIVILEGES;" \
-    && chown -R shopware:shopware /var/www/html \
-    && su -s /bin/bash -c "php bin/console system:install --basic-setup --force" shopware \
-    && su -s /bin/bash -c "php bin/console user:create admin --admin --email='admin@localhost' --firstName='Admin' --lastName='User' --password='shopware'" shopware \
-    && su -s /bin/bash -c "php bin/console system:generate-jwt-secret --force" shopware \
-    && su -s /bin/bash -c "php bin/console framework:demodata --products=20 --categories=5 --media=10" shopware
+# Initialize MySQL data directory
+RUN echo "Initializing MySQL data directory..." \
+    && mysqld --initialize-insecure --user=mysql --datadir=/var/lib/mysql \
+    && chown -R mysql:mysql /var/lib/mysql
 
-# Build frontend assets if needed
-RUN cd /var/www/html \
-    && if [ -f package.json ]; then \
-    su -s /bin/bash -c "npm install --no-audit --no-fund" shopware && \
-    su -s /bin/bash -c "npm run build:all" shopware; \
-    fi \
-    && su -s /bin/bash -c "php bin/console cache:clear" shopware
+# Install Shopware during build - Step 1: Start MySQL
+RUN echo "Installing Shopware during Docker build..." && \
+    cd /var/www/html && \
+    echo "Starting MySQL server for installation..." && \
+    mysqld_safe --user=mysql --datadir=/var/lib/mysql --pid-file=/var/run/mysqld/mysqld.pid --socket=/var/run/mysqld/mysqld.sock --log-error=/var/log/mysql/error.log &
 
-# Create installation metadata and backup
-RUN cd /var/www/html \
-    && echo "INSTALLATION_DATE=$(date -Iseconds)" > install.lock \
-    && echo "SHOPWARE_VERSION=${SHOPWARE_VERSION}" >> install.lock \
-    && echo "PHP_VERSION=${PHP_VERSION}" >> install.lock \
-    && echo "BUILD_COMPLETE=true" >> install.lock \
-    && chown shopware:shopware install.lock \
-    && mysqldump -u root shopware > /tmp/shopware_build.sql \
-    && chown shopware:shopware /tmp/shopware_build.sql \
-    && pkill mysqld || true \
-    && sleep 5 \
-    && rm -rf /var/www/html/var/cache/dev/* \
-    && rm -rf /var/www/html/var/log/* \
-    && rm -f /etc/mysql/conf.d/shopware-build.cnf \
-    && echo "Shopware build-time installation completed successfully"
+# Install Shopware during build - Step 2: Wait for MySQL and setup database
+RUN sleep 15 && \
+    echo "Waiting for MySQL to be ready..." && \
+    timeout 90 bash -c 'until mysqladmin ping --silent --socket=/var/run/mysqld/mysqld.sock 2>/dev/null; do echo "Waiting for MySQL..."; sleep 3; done' && \
+    echo "MySQL is ready, setting up database..." && \
+    mysql --socket=/var/run/mysqld/mysqld.sock -u root -e "CREATE DATABASE IF NOT EXISTS shopware CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" && \
+    mysql --socket=/var/run/mysqld/mysqld.sock -u root -e "CREATE USER IF NOT EXISTS 'shopware'@'localhost' IDENTIFIED BY 'shopware';" && \
+    mysql --socket=/var/run/mysqld/mysqld.sock -u root -e "GRANT ALL PRIVILEGES ON shopware.* TO 'shopware'@'localhost';" && \
+    mysql --socket=/var/run/mysqld/mysqld.sock -u root -e "FLUSH PRIVILEGES;"
+
+# Install Shopware during build - Step 3: Install Shopware system
+RUN echo "Database setup complete, installing Shopware..." && \
+    cd /var/www/html && \
+    chown -R shopware:shopware /var/www/html && \
+    su -s /bin/bash -c "php bin/console system:install --basic-setup --force" shopware
+
+# Install Shopware during build - Step 4: Create admin user and setup
+RUN echo "Creating admin user..." && \
+    cd /var/www/html && \
+    su -s /bin/bash -c "php bin/console user:create admin --admin --email='admin@localhost' --firstName='Admin' --lastName='User' --password='shopware'" shopware && \
+    echo "Generating JWT secret..." && \
+    su -s /bin/bash -c "php bin/console system:generate-jwt-secret --force" shopware
+
+# Install Shopware during build - Step 5: Install demo data and cleanup
+RUN echo "Installing demo data..." && \
+    cd /var/www/html && \
+    su -s /bin/bash -c "php bin/console framework:demodata --products=20 --categories=5 --media=10" shopware && \
+    echo "Stopping MySQL..." && \
+    pkill mysqld && sleep 5 && \
+    echo "Shopware installation completed"
+
+# Build frontend assets - Step 1: Check for package.json
+RUN cd /var/www/html && echo "Checking for frontend build requirements..."
+
+# Build frontend assets - Step 2: Install and build if needed
+RUN cd /var/www/html && \
+    if [ -f package.json ]; then \
+        echo "Building frontend assets..." && \
+        su -s /bin/bash -c "npm install --no-audit --no-fund" shopware && \
+        su -s /bin/bash -c "npm run build:all" shopware; \
+    else \
+        echo "No package.json found, skipping frontend build"; \
+    fi
+
+# Build frontend assets - Step 3: Clear cache
+RUN cd /var/www/html && \
+    echo "Clearing cache..." && \
+    su -s /bin/bash -c "php bin/console cache:clear" shopware
+
+# Create installation metadata
+RUN cd /var/www/html && \
+    echo "Creating installation metadata..." && \
+    echo "INSTALLATION_DATE=$(date -Iseconds)" > install.lock && \
+    echo "SHOPWARE_VERSION=${SHOPWARE_VERSION}" >> install.lock && \
+    echo "PHP_VERSION=${PHP_VERSION}" >> install.lock && \
+    echo "BUILD_COMPLETE=true" >> install.lock && \
+    chown shopware:shopware install.lock
+
+# Create database backup - Step 1: Start MySQL
+RUN echo "Starting MySQL to create database backup..." && \
+    mysqld_safe --user=mysql --datadir=/var/lib/mysql --pid-file=/var/run/mysqld/mysqld.pid --socket=/var/run/mysqld/mysqld.sock --log-error=/var/log/mysql/error.log & \
+    sleep 10 && \
+    timeout 30 bash -c 'until mysqladmin ping --silent --socket=/var/run/mysqld/mysqld.sock 2>/dev/null; do echo "Waiting for MySQL..."; sleep 2; done'
+
+# Create database backup - Step 2: Backup and cleanup
+RUN echo "Creating database backup..." && \
+    mysqldump --socket=/var/run/mysqld/mysqld.sock -u root shopware > /tmp/shopware_build.sql && \
+    chown shopware:shopware /tmp/shopware_build.sql && \
+    echo "Stopping MySQL and cleaning up..." && \
+    pkill mysqld && sleep 5
+
+# Final cleanup
+RUN rm -rf /var/www/html/var/cache/dev/* && \
+    rm -rf /var/www/html/var/log/* && \
+    rm -f /etc/mysql/conf.d/shopware-build.cnf && \
+    echo "Build-time installation completed successfully"
 
 # Copy configuration files
 COPY --chown=shopware:shopware apache-shopware.conf /etc/apache2/sites-available/000-default.conf

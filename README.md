@@ -2,7 +2,7 @@
 
 A modern alternative to dockware for Shopware 6 development with all the latest versions and development tools pre-configured.
 
-> **Last updated: 2025-07-29 07:35:35 UTC**
+> **Last updated: 2025-07-29 07:46:22 UTC**
 
 ## 🚀 Quick Start
 

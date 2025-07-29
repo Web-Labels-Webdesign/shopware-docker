@@ -303,16 +303,26 @@ jobs:
         uses: actions/delete-package-versions@v5
         continue-on-error: true
         with:
-          package-name: 'shopware-docker/shopware-dev'
+          package-name: '${{ github.repository }}/shopware-dev'
           package-type: 'container'
-          min-versions-to-keep: 5
-          # Keep major versions, latest, and cache images
+          min-versions-to-keep: 2
+          # Keep major versions, latest, branch builds, and cache images
           ignore-versions: |
-            ^6\.5$
-            ^6\.6$
-            ^6\.7$
-            ^latest$
-            ^cache-.*$
-          # Only delete untagged versions and old patch versions
+            6.5
+            6.6  
+            6.7
+            latest
+            main
+            develop
+            cache-6.5
+            cache-6.6
+            cache-6.7
+            cache-6.5-full
+            cache-6.5-slim
+            cache-6.6-full
+            cache-6.6-slim
+            cache-6.7-full
+            cache-6.7-slim
+          # Delete old patch versions but preserve important infrastructure
           delete-only-untagged-versions: false
           token: ${{ secrets.GITHUB_TOKEN }}

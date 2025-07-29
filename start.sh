@@ -41,10 +41,13 @@ if [ ! -d "/var/lib/mysql/mysql" ]; then
     echo "🧹 Cleaning existing MySQL data..."
     rm -rf /var/lib/mysql/*
     
-    # Ensure directories are properly set up
-    mkdir -p /var/lib/mysql
-    chown mysql:mysql /var/lib/mysql
-    chmod 755 /var/lib/mysql
+    # Ensure directories are properly set up (dockware approach)
+    mkdir -p /var/lib/mysql /var/run/mysqld /var/log/mysql
+    chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql
+    chmod 755 /var/lib/mysql /var/run/mysqld
+    
+    # Remove any socket lock files (dockware optimization)
+    rm -f /var/run/mysqld/mysqld.sock.lock /var/lib/mysql/mysql.sock.lock 2>/dev/null || true
     
     # Create MySQL configuration for initialization
     cat > /tmp/mysql-init.cnf << 'EOF'
@@ -118,10 +121,13 @@ rm -f /var/lib/mysql/ca-key.pem /var/lib/mysql/server-key.pem /var/lib/mysql/pri
 # Start MySQL service
 echo "🗄️ Starting MySQL..."
 
-# Ensure required directories exist with proper permissions
+# Ensure required directories exist with proper permissions (dockware approach)
 mkdir -p /var/run/mysqld /var/log/mysql
-chown mysql:mysql /var/run/mysqld /var/log/mysql
+chown -R mysql:mysql /var/lib/mysql /var/run/mysqld /var/log/mysql
 chmod 755 /var/run/mysqld
+
+# Remove socket lock files before starting (dockware optimization)
+rm -f /var/run/mysqld/mysqld.sock.lock /var/lib/mysql/mysql.sock.lock 2>/dev/null || true
 
 # Try starting MySQL and check for success
 if service mysql start; then
@@ -152,11 +158,18 @@ else
     fi
 fi
 
-# Wait for MySQL to be ready
+# Wait for MySQL to be ready (dockware-inspired approach)
 echo "⏳ Waiting for MySQL to be ready..."
+MYSQL_READY=false
 for i in {1..30}; do
+    # Try multiple ways to check MySQL readiness
     if mysqladmin ping -h localhost --silent 2>/dev/null; then
         echo "✅ MySQL is ready and responding"
+        MYSQL_READY=true
+        break
+    elif mysql -u root -e "SELECT 1" >/dev/null 2>&1; then
+        echo "✅ MySQL connection established"
+        MYSQL_READY=true
         break
     fi
     echo "Waiting for MySQL... ($i/30)"
@@ -164,7 +177,7 @@ for i in {1..30}; do
 done
 
 # Final check if MySQL is actually running
-if ! mysqladmin ping -h localhost --silent 2>/dev/null; then
+if [ "$MYSQL_READY" = "false" ]; then
     echo "❌ MySQL failed to become ready"
     echo "MySQL process status:"
     ps aux | grep mysql || echo "No MySQL processes found"

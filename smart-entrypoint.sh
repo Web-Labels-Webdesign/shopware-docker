@@ -77,6 +77,8 @@ if [ "$AUTO_PERMISSIONS" = "true" ]; then
     fi
 fi
 
+USER devuser
+
 # Execute dockware's original entrypoint
 debug_log "Executing dockware entrypoint..."
 if [ -f /entrypoint.sh ]; then

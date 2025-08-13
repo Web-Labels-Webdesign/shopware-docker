@@ -8,4 +8,12 @@ LABEL org.opencontainers.image.authors="Web Labels Webdesign"
 
 COPY --chmod=755 smart-entrypoint.sh /usr/local/bin/smart-entrypoint.sh
 
-ENTRYPOINT ["/usr/local/bin/smart-entrypoint.sh"]
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+
+RUN groupadd -g ${HOST_GID} devuser && \
+	useradd -u ${HOST_UID} -g ${HOST_GID} -m devuser && \
+	usermod -aG www-data devuser
+
+USER devuser
+WORKDIR /var/www/html

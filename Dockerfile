@@ -6,7 +6,12 @@ LABEL org.opencontainers.image.description="Enhanced dockware/dev with automatic
 LABEL org.opencontainers.image.source="https://github.com/Web-Labels-Webdesign/shopware-docker"
 LABEL org.opencontainers.image.authors="Web Labels Webdesign"
 
+# Store original entrypoint information for chaining
+RUN echo "#!/bin/bash" > /usr/local/bin/original-entrypoint.sh && \
+    echo 'exec /entrypoint.sh "$@"' >> /usr/local/bin/original-entrypoint.sh && \
+    chmod +x /usr/local/bin/original-entrypoint.sh
+
 COPY --chmod=755 smart-entrypoint.sh /usr/local/bin/smart-entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/smart-entrypoint.sh"]
-CMD ["supervisord"]
+CMD ["/usr/local/bin/original-entrypoint.sh"]

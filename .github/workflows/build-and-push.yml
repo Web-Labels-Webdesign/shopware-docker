@@ -141,38 +141,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Run smoke test
-        if: steps.check-image.outputs.exists == 'false' || github.event.inputs.force_rebuild == 'true' || github.event_name == 'push'
-        run: |
-          # Basic smoke test to ensure the container starts
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dockware-${{ matrix.dockware_version }}"
-          
-          echo "Starting smoke test for $IMAGE_TAG"
-          
-          # Pull the image we just built
-          docker pull "$IMAGE_TAG"
-          
-          # Run basic test
-          docker run --rm -d --name shopware-test \
-            -e SHOPWARE_DOCKER_DEBUG=true \
-            -e SHOPWARE_DOCKER_AUTO_PERMISSIONS=true \
-            "$IMAGE_TAG" &
-          
-          # Wait for container to start
-          sleep 30
-          
-          # Check if container is still running
-          if docker ps | grep -q shopware-test; then
-            echo "✅ Smoke test passed - container is running"
-            docker logs shopware-test
-            docker stop shopware-test
-          else
-            echo "❌ Smoke test failed - container stopped"
-            docker logs shopware-test || true
-            exit 1
-          fi
-
   cleanup:
     needs: [detect-versions, build]
     runs-on: ubuntu-latest

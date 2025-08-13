@@ -136,9 +136,10 @@ handle_permissions
 # Execute the original dockware entrypoint/command
 debug_log "Executing original command: $@"
 
-# If no arguments provided, use the default CMD
+# Execute the original dockware entrypoint/command
 if [ $# -eq 0 ]; then
-    exec supervisord
+    # Use the original dockware entrypoint
+    exec /usr/local/bin/original-entrypoint.sh
 else
     exec "$@"
 fi

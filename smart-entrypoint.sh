@@ -104,28 +104,75 @@ update_user_ids() {
     if [ "$current_uid" != "$new_uid" ] || [ "$current_gid" != "$new_gid" ]; then
         debug_log "Updating www-data user IDs..."
         
+        # Try the standard approach first
+        local success=false
+        
         # Update group first
         if [ "$current_gid" != "$new_gid" ]; then
-            groupmod -g "$new_gid" www-data 2>/dev/null || {
-                debug_log "Failed to modify group, creating new group..."
-                groupadd -g "$new_gid" www-data-new 2>/dev/null || true
-                usermod -g "$new_gid" www-data 2>/dev/null || true
-            }
+            if groupmod -g "$new_gid" www-data 2>/dev/null; then
+                debug_log "Successfully updated group to GID $new_gid"
+            else
+                debug_log "groupmod failed, trying alternative approach..."
+                # Check if group with target GID already exists
+                if ! getent group "$new_gid" >/dev/null 2>&1; then
+                    groupadd -g "$new_gid" "host-group-$new_gid" 2>/dev/null || true
+                fi
+            fi
         fi
         
         # Update user
         if [ "$current_uid" != "$new_uid" ]; then
-            usermod -u "$new_uid" www-data 2>/dev/null || {
-                debug_log "Failed to modify user directly, using alternative method..."
-                # Alternative approach for systems where usermod fails
-                sed -i "s/^www-data:x:$current_uid:$current_gid:/www-data:x:$new_uid:$new_gid:/" /etc/passwd
-            }
+            if usermod -u "$new_uid" -g "$new_gid" www-data 2>/dev/null; then
+                debug_log "Successfully updated user to UID $new_uid, GID $new_gid"
+                success=true
+            else
+                debug_log "usermod failed, using direct ownership management instead"
+                # Since we can't modify the user, just ensure volume ownership is correct
+                success=true
+                
+                # Create a background process to continuously fix ownership
+                debug_log "Setting up continuous ownership monitoring"
+                {
+                    while true; do
+                        sleep 30
+                        for dir in "/var/www/html/custom" "/var/www/html/files" "/var/www/html/var"; do
+                            if [ -d "$dir" ]; then
+                                find "$dir" -user 33 -group 33 -exec chown "$new_uid:$new_gid" {} \; 2>/dev/null || true
+                            fi
+                        done
+                    done
+                } &
+                
+                # Store the monitoring PID
+                export OWNERSHIP_MONITOR_PID=$!
+                debug_log "Started ownership monitor with PID $OWNERSHIP_MONITOR_PID"
+            fi
         fi
         
-        # Fix ownership of key directories
-        debug_log "Fixing ownership of key directories..."
-        chown -R www-data:www-data /var/www/html 2>/dev/null || true
-        chown -R www-data:www-data /tmp 2>/dev/null || true
+        if [ "$success" = true ]; then
+            # Fix ownership of key directories and mounted volumes
+            debug_log "Fixing ownership of mounted directories..."
+            
+            # List of directories to fix ownership for
+            local dirs_to_fix=(
+                "/var/www/html/custom"
+                "/var/www/html/files"
+                "/var/www/html/var"
+                "/var/www/html/config"
+            )
+            
+            for dir in "${dirs_to_fix[@]}"; do
+                if [ -d "$dir" ]; then
+                    debug_log "Setting ownership on $dir"
+                    chown -R "$new_uid:$new_gid" "$dir" 2>/dev/null || {
+                        debug_log "Failed to change ownership of $dir, will handle at runtime"
+                    }
+                fi
+            done
+            
+            # Also try to fix /tmp and /var/tmp for good measure
+            chown -R "$new_uid:$new_gid" /tmp 2>/dev/null || true
+        fi
         
         debug_log "User ID update completed"
     else

@@ -6,8 +6,7 @@ LABEL org.opencontainers.image.description="Enhanced dockware/dev with automatic
 LABEL org.opencontainers.image.source="https://github.com/Web-Labels-Webdesign/shopware-docker"
 LABEL org.opencontainers.image.authors="Web Labels Webdesign"
 
-COPY smart-entrypoint.sh /usr/local/bin/smart-entrypoint.sh
-RUN chmod +x /usr/local/bin/smart-entrypoint.sh
+COPY --chmod=755 smart-entrypoint.sh /usr/local/bin/smart-entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/smart-entrypoint.sh"]
 CMD ["supervisord"]

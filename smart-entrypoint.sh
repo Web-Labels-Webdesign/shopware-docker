@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Smart Entrypoint for Shopware Docker
-# Handles automatic UID/GID mapping for seamless file permissions across host systems
+# Simple Smart Entrypoint for Shopware Docker
+# Handles automatic UID/GID mapping for seamless file permissions
 
 # Environment variables with defaults
 AUTO_PERMISSIONS=${SHOPWARE_DOCKER_AUTO_PERMISSIONS:-true}
@@ -17,256 +17,117 @@ debug_log() {
     fi
 }
 
-# Function to detect host OS
-detect_host_os() {
-    # Check for common Windows indicators in container environment
-    if [ -n "$PROCESSOR_ARCHITECTURE" ] || [ -n "$OS" ] || [ -f /proc/version ] && grep -q "Microsoft\|WSL" /proc/version 2>/dev/null; then
-        echo "windows"
-    elif [ "$(uname)" = "Darwin" ]; then
-        echo "macos"
-    else
-        echo "linux"
-    fi
-}
-
-# Function to get host UID/GID from mounted volumes
-get_host_ids() {
-    local detected_uid="33"
-    local detected_gid="33"
+# Get host UID/GID from mounted volumes
+get_host_uid_gid() {
+    local detected_uid="1000"  # Default fallback
+    local detected_gid="1000"  # Default fallback
     
-    # List of common mount points to check for host UID/GID
-    local mount_points=(
-        "/var/www/html/custom"
-        "/var/www/html/custom/plugins"
-        "/var/www/html/files"
-        "/var/www/html/var"
-        "/var/www/html"
-    )
-    
-    debug_log "Checking mount points for host UID/GID detection..."
-    
-    # Check each mount point to find one with host ownership
-    for mount_point in "${mount_points[@]}"; do
+    # Check common mount points for host ownership
+    for mount_point in "/var/www/html/custom" "/var/www/html/files" "/var/www/html/var" "/var/www/html"; do
         if [ -d "$mount_point" ]; then
-            local stat_info=$(stat -c "%u:%g" "$mount_point" 2>/dev/null)
-            if [ -n "$stat_info" ]; then
-                local uid=$(echo "$stat_info" | cut -d: -f1)
-                local gid=$(echo "$stat_info" | cut -d: -f2)
-                
-                debug_log "Mount point $mount_point has ownership: $uid:$gid"
-                
-                # If we find a UID/GID that's not 33 (www-data) and not 0 (root), use it
-                if [ "$uid" != "33" ] && [ "$uid" != "0" ] && [ "$uid" -gt 0 ] 2>/dev/null; then
-                    detected_uid="$uid"
-                    detected_gid="$gid"
-                    debug_log "Using host IDs from $mount_point: $detected_uid:$detected_gid"
-                    break
-                fi
+            # Look for files/dirs not owned by www-data (33) or root (0)
+            local found=$(find "$mount_point" -maxdepth 2 \! -uid 33 \! -uid 0 -printf "%u:%g\n" 2>/dev/null | head -1)
+            if [ -n "$found" ]; then
+                detected_uid=$(echo "$found" | cut -d: -f1)
+                detected_gid=$(echo "$found" | cut -d: -f2)
+                debug_log "Found host ownership: $detected_uid:$detected_gid in $mount_point"
+                break
             fi
         fi
     done
     
-    # Fallback: Check if there are any files in common directories that might show host ownership
-    if [ "$detected_uid" = "33" ]; then
-        debug_log "No mounted volumes detected, checking for files with host ownership..."
-        
-        # Check for any files that might have been created by host user
-        for mount_point in "${mount_points[@]}"; do
-            if [ -d "$mount_point" ]; then
-                debug_log "Scanning $mount_point for files with host ownership..."
-                # Find the first file/directory that's not owned by www-data or root
-                local file_stat=$(find "$mount_point" -maxdepth 2 -not -uid 33 -not -uid 0 -printf "%u:%g\n" 2>/dev/null | head -n1)
-                if [ -n "$file_stat" ]; then
-                    detected_uid=$(echo "$file_stat" | cut -d: -f1)
-                    detected_gid=$(echo "$file_stat" | cut -d: -f2)
-                    debug_log "Found file with host ownership: $detected_uid:$detected_gid"
-                    break
-                fi
-            else
-                debug_log "Mount point $mount_point does not exist"
-            fi
-        done
-    fi
-    
     echo "$detected_uid:$detected_gid"
 }
 
-# Function to update user/group IDs
-update_user_ids() {
-    local new_uid=$1
-    local new_gid=$2
-    local current_uid=$(id -u www-data)
-    local current_gid=$(id -g www-data)
+# Main permission handling
+if [ "$AUTO_PERMISSIONS" = "true" ]; then
+    debug_log "Starting permission handling..."
     
-    debug_log "Current www-data UID: $current_uid, GID: $current_gid"
-    debug_log "Target UID: $new_uid, GID: $new_gid"
+    # Determine target UID/GID
+    if [ "$HOST_UID" = "auto" ] || [ "$HOST_GID" = "auto" ]; then
+        host_ids=$(get_host_uid_gid)
+        target_uid=$(echo "$host_ids" | cut -d: -f1)
+        target_gid=$(echo "$host_ids" | cut -d: -f2)
+    else
+        target_uid="$HOST_UID"
+        target_gid="$HOST_GID"
+    fi
     
-    if [ "$current_uid" != "$new_uid" ] || [ "$current_gid" != "$new_gid" ]; then
-        debug_log "Updating www-data user IDs..."
+    debug_log "Target UID/GID: $target_uid:$target_gid"
+    
+    # Update www-data user to match host
+    if [ "$target_uid" -gt 0 ] && [ "$target_gid" -gt 0 ]; then
+        current_uid=$(id -u www-data)
+        current_gid=$(id -g www-data)
         
-        # Try the standard approach first
-        local success=false
-        
-        # Update group first
-        if [ "$current_gid" != "$new_gid" ]; then
-            if groupmod -g "$new_gid" www-data 2>/dev/null; then
-                debug_log "Successfully updated group to GID $new_gid"
-            else
-                debug_log "groupmod failed, trying alternative approach..."
-                # Check if group with target GID already exists
-                if ! getent group "$new_gid" >/dev/null 2>&1; then
-                    groupadd -g "$new_gid" "host-group-$new_gid" 2>/dev/null || true
-                fi
-            fi
-        fi
-        
-        # Update user
-        if [ "$current_uid" != "$new_uid" ]; then
-            if usermod -u "$new_uid" -g "$new_gid" www-data 2>/dev/null; then
-                debug_log "Successfully updated user to UID $new_uid, GID $new_gid"
-                success=true
-            else
-                debug_log "usermod failed, using direct ownership management instead"
-                # Since we can't modify the user, just ensure volume ownership is correct
-                success=true
-                
-                # Create a background process to continuously fix ownership
-                debug_log "Setting up continuous ownership monitoring"
-                {
-                    while true; do
-                        sleep 30
-                        for dir in "/var/www/html/custom" "/var/www/html/files" "/var/www/html/var"; do
-                            if [ -d "$dir" ]; then
-                                find "$dir" -user 33 -group 33 -exec chown "$new_uid:$new_gid" {} \; 2>/dev/null || true
-                            fi
-                        done
-                    done
-                } &
-                
-                # Store the monitoring PID
-                export OWNERSHIP_MONITOR_PID=$!
-                debug_log "Started ownership monitor with PID $OWNERSHIP_MONITOR_PID"
-            fi
-        fi
-        
-        if [ "$success" = true ]; then
-            # Fix ownership of key directories and mounted volumes
-            debug_log "Fixing ownership of mounted directories..."
+        if [ "$target_uid" != "$current_uid" ] || [ "$target_gid" != "$current_gid" ]; then
+            debug_log "Updating www-data from $current_uid:$current_gid to $target_uid:$target_gid"
             
-            # List of directories to fix ownership for
-            local dirs_to_fix=(
-                "/var/www/html/custom"
-                "/var/www/html/files"
-                "/var/www/html/var"
-                "/var/www/html/config"
-            )
+            # Simple direct approach - modify user/group
+            groupmod -g "$target_gid" www-data 2>/dev/null || groupadd -g "$target_gid" hostgroup 2>/dev/null || true
+            usermod -u "$target_uid" -g "$target_gid" www-data 2>/dev/null || true
             
-            for dir in "${dirs_to_fix[@]}"; do
+            # Fix ownership of mounted directories
+            for dir in "/var/www/html/custom" "/var/www/html/files" "/var/www/html/var"; do
                 if [ -d "$dir" ]; then
-                    debug_log "Setting ownership on $dir"
-                    chown -R "$new_uid:$new_gid" "$dir" 2>/dev/null || {
-                        debug_log "Failed to change ownership of $dir, will handle at runtime"
-                    }
+                    debug_log "Fixing ownership of $dir"
+                    chown -R "$target_uid:$target_gid" "$dir" 2>/dev/null || true
                 fi
             done
             
-            # Also try to fix /tmp and /var/tmp for good measure
-            chown -R "$new_uid:$new_gid" /tmp 2>/dev/null || true
+            debug_log "Permission update completed"
         fi
+    fi
+fi
+
+# Execute dockware's original entrypoint with permission preservation
+debug_log "Executing dockware entrypoint..."
+
+if [ -f /entrypoint.sh ]; then
+    # Check if we need to preserve permissions after dockware starts
+    if [ "$AUTO_PERMISSIONS" = "true" ] && [ -n "$target_uid" ] && [ -n "$target_gid" ]; then
+        debug_log "Setting up post-dockware permission fix"
         
-        debug_log "User ID update completed"
-    else
-        debug_log "User IDs are already correct"
-    fi
-}
+        # Create a script to re-apply permissions after dockware initialization
+        cat > /usr/local/bin/fix-permissions-after-dockware.sh << EOF
+#!/bin/bash
+# Wait for dockware to complete initialization
+sleep 10
 
-# Main permission handling logic
-handle_permissions() {
-    if [ "$AUTO_PERMISSIONS" != "true" ]; then
-        debug_log "Auto permissions disabled, skipping UID/GID mapping"
-        return
+# Re-apply our permission changes in case dockware overwrote them
+debug_log() { [ "\$SHOPWARE_DOCKER_DEBUG" = "true" ] && echo "[DEBUG] \$1" >&2; }
+
+debug_log "Post-dockware permission fix starting..."
+
+# Re-check and fix www-data user
+current_uid=\$(id -u www-data 2>/dev/null || echo "33")
+current_gid=\$(id -g www-data 2>/dev/null || echo "33")
+
+if [ "\$current_uid" != "$target_uid" ] || [ "\$current_gid" != "$target_gid" ]; then
+    debug_log "Dockware changed permissions back, re-applying: $target_uid:$target_gid"
+    groupmod -g "$target_gid" www-data 2>/dev/null || true
+    usermod -u "$target_uid" -g "$target_gid" www-data 2>/dev/null || true
+fi
+
+# Re-fix ownership of mounted directories  
+for dir in "/var/www/html/custom" "/var/www/html/files" "/var/www/html/var"; do
+    if [ -d "\$dir" ]; then
+        debug_log "Re-fixing ownership of \$dir"
+        chown -R "$target_uid:$target_gid" "\$dir" 2>/dev/null || true
+    fi
+done
+
+debug_log "Post-dockware permission fix completed"
+EOF
+        
+        chmod +x /usr/local/bin/fix-permissions-after-dockware.sh
+        
+        # Run the fix in background after dockware starts
+        /usr/local/bin/fix-permissions-after-dockware.sh &
     fi
     
-    local host_os=$(detect_host_os)
-    debug_log "Detected host OS: $host_os"
-    
-    case "$host_os" in
-        "windows"|"macos")
-            debug_log "Windows/macOS detected - Docker Desktop handles permissions automatically"
-            ;;
-        "linux")
-            debug_log "Linux detected - configuring UID/GID mapping"
-            
-            local target_uid="$HOST_UID"
-            local target_gid="$HOST_GID"
-            
-            # Auto-detect if needed
-            if [ "$target_uid" = "auto" ] || [ "$target_gid" = "auto" ]; then
-                local host_ids=$(get_host_ids)
-                local detected_uid=$(echo "$host_ids" | cut -d: -f1)
-                local detected_gid=$(echo "$host_ids" | cut -d: -f2)
-                
-                [ "$target_uid" = "auto" ] && target_uid="$detected_uid"
-                [ "$target_gid" = "auto" ] && target_gid="$detected_gid"
-                
-                debug_log "Auto-detected UID: $detected_uid, GID: $detected_gid"
-            fi
-            
-            # Always attempt to update if we have valid IDs that are different from current
-            debug_log "Target IDs determined: UID=$target_uid, GID=$target_gid"
-            
-            if [ "$target_uid" -gt 0 ] 2>/dev/null && [ "$target_gid" -gt 0 ] 2>/dev/null; then
-                local current_uid=$(id -u www-data 2>/dev/null || echo "33")
-                local current_gid=$(id -g www-data 2>/dev/null || echo "33")
-                
-                if [ "$target_uid" != "$current_uid" ] || [ "$target_gid" != "$current_gid" ]; then
-                    debug_log "IDs differ from current, updating www-data user"
-                    update_user_ids "$target_uid" "$target_gid"
-                else
-                    debug_log "Target IDs match current IDs, no update needed"
-                fi
-            else
-                debug_log "Invalid target IDs detected, using current www-data IDs"
-            fi
-            ;;
-        *)
-            debug_log "Unknown host OS, using default configuration"
-            ;;
-    esac
-}
-
-# Initialize permissions
-debug_log "Starting smart entrypoint..."
-handle_permissions
-
-# Execute the original dockware entrypoint/command
-debug_log "Executing original command: $@"
-
-# Execute the original dockware entrypoint/command
-if [ $# -eq 0 ]; then
-    # No arguments provided, use dockware's default behavior
-    # Check for dockware's entrypoint and execute it
-    if [ -f /entrypoint.sh ]; then
-        debug_log "Executing dockware entrypoint: /entrypoint.sh"
-        exec /entrypoint.sh
-    elif [ -f /usr/local/bin/entrypoint.sh ]; then
-        debug_log "Executing dockware entrypoint: /usr/local/bin/entrypoint.sh"
-        exec /usr/local/bin/entrypoint.sh
-    else
-        # Fall back to supervisord if entrypoint not found
-        debug_log "No dockware entrypoint found, trying supervisord"
-        if command -v supervisord >/dev/null 2>&1; then
-            exec supervisord
-        elif [ -f /usr/bin/supervisord ]; then
-            exec /usr/bin/supervisord
-        elif [ -f /usr/local/bin/supervisord ]; then
-            exec /usr/local/bin/supervisord
-        else
-            debug_log "supervisord not found, starting bash shell"
-            exec /bin/bash
-        fi
-    fi
+    exec /entrypoint.sh "$@"
 else
-    # Arguments provided, execute them directly
-    exec "$@"
+    # Fallback if no entrypoint found
+    exec supervisord
 fi

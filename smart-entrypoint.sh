@@ -138,8 +138,29 @@ debug_log "Executing original command: $@"
 
 # Execute the original dockware entrypoint/command
 if [ $# -eq 0 ]; then
-    # Use the original dockware entrypoint
-    exec /usr/local/bin/original-entrypoint.sh
+    # No arguments provided, use dockware's default behavior
+    # Check for dockware's entrypoint and execute it
+    if [ -f /entrypoint.sh ]; then
+        debug_log "Executing dockware entrypoint: /entrypoint.sh"
+        exec /entrypoint.sh
+    elif [ -f /usr/local/bin/entrypoint.sh ]; then
+        debug_log "Executing dockware entrypoint: /usr/local/bin/entrypoint.sh"
+        exec /usr/local/bin/entrypoint.sh
+    else
+        # Fall back to supervisord if entrypoint not found
+        debug_log "No dockware entrypoint found, trying supervisord"
+        if command -v supervisord >/dev/null 2>&1; then
+            exec supervisord
+        elif [ -f /usr/bin/supervisord ]; then
+            exec /usr/bin/supervisord
+        elif [ -f /usr/local/bin/supervisord ]; then
+            exec /usr/local/bin/supervisord
+        else
+            debug_log "supervisord not found, starting bash shell"
+            exec /bin/bash
+        fi
+    fi
 else
+    # Arguments provided, execute them directly
     exec "$@"
 fi

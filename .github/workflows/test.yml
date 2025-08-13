@@ -1,0 +1,150 @@
+name: Test and Validate
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+
+      - name: Lint shell scripts
+        run: |
+          # Install shellcheck
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          
+          # Lint all shell scripts
+          find . -name "*.sh" -type f -exec shellcheck {} \;
+
+  validate-entrypoint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test entrypoint script syntax
+        run: |
+          bash -n smart-entrypoint.sh
+          echo "✅ Entrypoint script syntax is valid"
+
+      - name: Test entrypoint functions
+        run: |
+          # Source the script and test individual functions
+          source smart-entrypoint.sh
+          
+          # Test detect_host_os function
+          echo "Testing detect_host_os function..."
+          # This will detect GitHub Actions as Linux
+          HOST_OS=$(detect_host_os)
+          if [ "$HOST_OS" = "linux" ]; then
+            echo "✅ Host OS detection working: $HOST_OS"
+          else
+            echo "❌ Unexpected host OS: $HOST_OS"
+            exit 1
+          fi
+
+  integration-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dockware_version: [6.6.10.4]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          build-args: |
+            DOCKWARE_VERSION=${{ matrix.dockware_version }}
+          tags: shopware-docker-test:${{ matrix.dockware_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run comprehensive smoke test
+        run: |
+          chmod +x ./.github/scripts/smoke-test.sh
+          ./.github/scripts/smoke-test.sh shopware-docker-test:${{ matrix.dockware_version }}
+
+      - name: Test permission mapping on Linux
+        run: |
+          echo "🔐 Testing Linux permission mapping..."
+          
+          # Create a test directory with known ownership
+          mkdir -p ./test-volume
+          echo "Test file content" > ./test-volume/test-file.txt
+          
+          # Get current user UID/GID
+          HOST_UID=$(id -u)
+          HOST_GID=$(id -g)
+          echo "Host UID: $HOST_UID, GID: $HOST_GID"
+          
+          # Run container with volume mount
+          CONTAINER_ID=$(docker run -d \
+            -v "$(pwd)/test-volume:/var/www/html/test-mount" \
+            -e SHOPWARE_DOCKER_DEBUG=true \
+            shopware-docker-test:${{ matrix.dockware_version }})
+          
+          # Wait for initialization
+          sleep 15
+          
+          # Check that www-data user was updated
+          docker exec "$CONTAINER_ID" id www-data
+          
+          # Test file creation from container
+          docker exec "$CONTAINER_ID" touch /var/www/html/test-mount/container-created.txt
+          docker exec "$CONTAINER_ID" bash -c 'echo "From container" > /var/www/html/test-mount/container-file.txt'
+          
+          # Check ownership on host
+          ls -la ./test-volume/
+          
+          # Verify files are accessible on host
+          if [ -f "./test-volume/container-created.txt" ] && [ -f "./test-volume/container-file.txt" ]; then
+            echo "✅ Files created by container are accessible on host"
+          else
+            echo "❌ Files created by container are not accessible"
+            exit 1
+          fi
+          
+          # Cleanup
+          docker stop "$CONTAINER_ID"
+          docker rm "$CONTAINER_ID"
+          rm -rf ./test-volume
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'

@@ -1,0 +1,199 @@
+# Example docker-compose.yml configurations for Shopware Docker
+# Choose the setup that best fits your development needs
+
+# =============================================================================
+# BASIC SETUP - Simple plugin development
+# =============================================================================
+version: '3.8'
+
+services:
+  shopware:
+    image: ghcr.io/web-labels-webdesign/shopware-docker:dockware-6.6.10.4
+    container_name: shopware_dev
+    ports:
+      - "80:80"
+      - "443:443"
+      - "3306:3306"  # MySQL access
+      - "1025:1025"  # Mailhog SMTP
+      - "8025:8025"  # Mailhog Web UI
+    volumes:
+      # Mount your plugin for development
+      - ./src:/var/www/html/custom/plugins/YourPlugin
+    environment:
+      # === Shopware Docker Configuration ===
+      - SHOPWARE_DOCKER_AUTO_PERMISSIONS=true
+      - SHOPWARE_DOCKER_DEBUG=false
+      
+      # === Standard Dockware Configuration ===
+      - XDEBUG_ENABLED=1
+      - COMPOSER_VERSION=2
+      - NODE_VERSION=18
+      - PHP_VERSION=8.2
+
+# =============================================================================
+# ADVANCED SETUP - Full development environment
+# =============================================================================
+---
+version: '3.8'
+
+services:
+  shopware:
+    image: ghcr.io/web-labels-webdesign/shopware-docker:dockware-6.6.10.4
+    container_name: shopware_advanced
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      # Full Shopware mounting for extensive development
+      - ./custom:/var/www/html/custom
+      - ./files:/var/www/html/files
+      - ./var/log:/var/www/html/var/log
+      - ./config/packages:/var/www/html/config/packages
+      # Development tools
+      - ./docker/php.ini:/usr/local/etc/php/conf.d/custom.ini
+    environment:
+      # === Shopware Docker Configuration ===
+      - SHOPWARE_DOCKER_AUTO_PERMISSIONS=true
+      - SHOPWARE_DOCKER_HOST_UID=auto
+      - SHOPWARE_DOCKER_HOST_GID=auto
+      - SHOPWARE_DOCKER_DEBUG=true
+      
+      # === Database Configuration ===
+      - DATABASE_URL=mysql://shopware:shopware@db:3306/shopware
+      
+      # === Development Configuration ===
+      - APP_ENV=dev
+      - XDEBUG_ENABLED=1
+      - XDEBUG_CONFIG=client_host=host.docker.internal
+      - PHP_IDE_CONFIG=serverName=shopware-docker
+      
+      # === Performance Configuration ===
+      - COMPOSER_VERSION=2
+      - NODE_VERSION=20
+      - PHP_VERSION=8.2
+      - OPCACHE_ENABLED=0  # Disable in development
+    depends_on:
+      - db
+      - redis
+      - elasticsearch
+
+  db:
+    image: mysql:8.0
+    container_name: shopware_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: shopware
+      MYSQL_USER: shopware
+      MYSQL_PASSWORD: shopware
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql:/etc/mysql/conf.d
+    command: --default-authentication-plugin=mysql_native_password
+
+  redis:
+    image: redis:7-alpine
+    container_name: shopware_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  elasticsearch:
+    image: elasticsearch:7.17.9
+    container_name: shopware_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
+volumes:
+  mysql_data:
+  redis_data:
+  elasticsearch_data:
+
+# =============================================================================
+# MULTI-VERSION TESTING - Multiple Shopware versions
+# =============================================================================
+---
+version: '3.8'
+
+services:
+  # Latest Shopware 6.6
+  shopware-66:
+    image: ghcr.io/web-labels-webdesign/shopware-docker:dockware-6.6.10.4
+    container_name: shopware_66
+    ports:
+      - "8066:80"
+    volumes:
+      - ./src:/var/www/html/custom/plugins/TestPlugin
+    environment:
+      - SHOPWARE_DOCKER_AUTO_PERMISSIONS=true
+      - SHOPWARE_DOCKER_DEBUG=true
+
+  # Shopware 6.5 for compatibility testing
+  shopware-65:
+    image: ghcr.io/web-labels-webdesign/shopware-docker:dockware-6.5.8.10
+    container_name: shopware_65
+    ports:
+      - "8065:80"
+    volumes:
+      - ./src:/var/www/html/custom/plugins/TestPlugin
+    environment:
+      - SHOPWARE_DOCKER_AUTO_PERMISSIONS=true
+
+  # Shopware 6.4 for legacy support
+  shopware-64:
+    image: ghcr.io/web-labels-webdesign/shopware-docker:dockware-6.4.20.2
+    container_name: shopware_64
+    ports:
+      - "8064:80"
+    volumes:
+      - ./src:/var/www/html/custom/plugins/TestPlugin
+    environment:
+      - SHOPWARE_DOCKER_AUTO_PERMISSIONS=true
+
+# =============================================================================
+# WINDOWS/MACOS SETUP - Docker Desktop optimized
+# =============================================================================
+---
+version: '3.8'
+
+services:
+  shopware:
+    image: ghcr.io/web-labels-webdesign/shopware-docker:dockware-6.6.10.4
+    container_name: shopware_desktop
+    ports:
+      - "80:80"
+    volumes:
+      - ./src:/var/www/html/custom/plugins/YourPlugin
+    environment:
+      # Auto-permissions not needed on Docker Desktop, but won't hurt
+      - SHOPWARE_DOCKER_AUTO_PERMISSIONS=false
+      - XDEBUG_ENABLED=1
+      
+# =============================================================================
+# PRODUCTION-LIKE TESTING
+# =============================================================================
+---
+version: '3.8'
+
+services:
+  shopware:
+    image: ghcr.io/web-labels-webdesign/shopware-docker:dockware-6.6.10.4
+    container_name: shopware_prod_test
+    ports:
+      - "8080:80"
+    volumes:
+      - ./build:/var/www/html/custom/plugins/YourPlugin
+    environment:
+      # Minimal configuration for production-like testing
+      - SHOPWARE_DOCKER_AUTO_PERMISSIONS=false
+      - APP_ENV=prod
+      - XDEBUG_ENABLED=0
+      - OPCACHE_ENABLED=1
+      - COMPOSER_VERSION=2

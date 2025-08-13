@@ -61,19 +61,19 @@ if [ "$AUTO_PERMISSIONS" = "true" ]; then
         groupmod -g "$target_gid" www-data 2>/dev/null || true
         usermod -u "$target_uid" -g "$target_gid" www-data 2>/dev/null || true
         
-        # Fix ownership immediately and continuously
+        # Set ownership of entire /var/www/html recursively
+        debug_log "Setting ownership of /var/www/html recursively to $target_uid:$target_gid"
+        chown -R "$target_uid:$target_gid" /var/www/html 2>/dev/null || true
+        
+        # Continuous monitoring to maintain permissions
         {
             while true; do
-                for dir in "/var/www/html/custom" "/var/www/html/files" "/var/www/html/var"; do
-                    if [ -d "$dir" ]; then
-                        find "$dir" -user 33 -group 33 -exec chown "$target_uid:$target_gid" {} \; 2>/dev/null || true
-                    fi
-                done
-                sleep 10
+                sleep 30
+                chown -R "$target_uid:$target_gid" /var/www/html 2>/dev/null || true
             done
         } &
         
-        debug_log "Started continuous ownership monitoring"
+        debug_log "Started continuous ownership monitoring for /var/www/html"
     fi
 fi
 

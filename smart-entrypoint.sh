@@ -29,16 +29,66 @@ detect_host_os() {
     fi
 }
 
-# Function to get host UID/GID from mounted volume
+# Function to get host UID/GID from mounted volumes
 get_host_ids() {
-    local mount_point="/var/www/html"
+    local detected_uid="33"
+    local detected_gid="33"
     
-    if [ -d "$mount_point" ]; then
-        local stat_info=$(stat -c "%u:%g" "$mount_point" 2>/dev/null || echo "33:33")
-        echo "$stat_info"
-    else
-        echo "33:33"
+    # List of common mount points to check for host UID/GID
+    local mount_points=(
+        "/var/www/html/custom"
+        "/var/www/html/custom/plugins"
+        "/var/www/html/files"
+        "/var/www/html/var"
+        "/var/www/html"
+    )
+    
+    debug_log "Checking mount points for host UID/GID detection..."
+    
+    # Check each mount point to find one with host ownership
+    for mount_point in "${mount_points[@]}"; do
+        if [ -d "$mount_point" ]; then
+            local stat_info=$(stat -c "%u:%g" "$mount_point" 2>/dev/null)
+            if [ -n "$stat_info" ]; then
+                local uid=$(echo "$stat_info" | cut -d: -f1)
+                local gid=$(echo "$stat_info" | cut -d: -f2)
+                
+                debug_log "Mount point $mount_point has ownership: $uid:$gid"
+                
+                # If we find a UID/GID that's not 33 (www-data) and not 0 (root), use it
+                if [ "$uid" != "33" ] && [ "$uid" != "0" ] && [ "$uid" -gt 0 ] 2>/dev/null; then
+                    detected_uid="$uid"
+                    detected_gid="$gid"
+                    debug_log "Using host IDs from $mount_point: $detected_uid:$detected_gid"
+                    break
+                fi
+            fi
+        fi
+    done
+    
+    # Fallback: Check if there are any files in common directories that might show host ownership
+    if [ "$detected_uid" = "33" ]; then
+        debug_log "No mounted volumes detected, checking for files with host ownership..."
+        
+        # Check for any files that might have been created by host user
+        for mount_point in "${mount_points[@]}"; do
+            if [ -d "$mount_point" ]; then
+                debug_log "Scanning $mount_point for files with host ownership..."
+                # Find the first file/directory that's not owned by www-data or root
+                local file_stat=$(find "$mount_point" -maxdepth 2 -not -uid 33 -not -uid 0 -printf "%u:%g\n" 2>/dev/null | head -n1)
+                if [ -n "$file_stat" ]; then
+                    detected_uid=$(echo "$file_stat" | cut -d: -f1)
+                    detected_gid=$(echo "$file_stat" | cut -d: -f2)
+                    debug_log "Found file with host ownership: $detected_uid:$detected_gid"
+                    break
+                fi
+            else
+                debug_log "Mount point $mount_point does not exist"
+            fi
+        done
     fi
+    
+    echo "$detected_uid:$detected_gid"
 }
 
 # Function to update user/group IDs
@@ -115,12 +165,21 @@ handle_permissions() {
                 debug_log "Auto-detected UID: $detected_uid, GID: $detected_gid"
             fi
             
-            # Only update if we have valid IDs and they're not the default
-            if [ "$target_uid" -gt 0 ] && [ "$target_gid" -gt 0 ] && \
-               ([ "$target_uid" != "33" ] || [ "$target_gid" != "33" ]); then
-                update_user_ids "$target_uid" "$target_gid"
+            # Always attempt to update if we have valid IDs that are different from current
+            debug_log "Target IDs determined: UID=$target_uid, GID=$target_gid"
+            
+            if [ "$target_uid" -gt 0 ] 2>/dev/null && [ "$target_gid" -gt 0 ] 2>/dev/null; then
+                local current_uid=$(id -u www-data 2>/dev/null || echo "33")
+                local current_gid=$(id -g www-data 2>/dev/null || echo "33")
+                
+                if [ "$target_uid" != "$current_uid" ] || [ "$target_gid" != "$current_gid" ]; then
+                    debug_log "IDs differ from current, updating www-data user"
+                    update_user_ids "$target_uid" "$target_gid"
+                else
+                    debug_log "Target IDs match current IDs, no update needed"
+                fi
             else
-                debug_log "Using default www-data IDs (33:33)"
+                debug_log "Invalid target IDs detected, using current www-data IDs"
             fi
             ;;
         *)
